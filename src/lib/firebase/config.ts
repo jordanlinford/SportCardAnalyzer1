@@ -23,7 +23,7 @@ console.log("Firebase config:", {
 // API URL configuration
 export const API_URL = import.meta.env.PROD 
   ? 'https://sports-card-analyzer.vercel.app/api'  // Production URL
-  : 'http://localhost:3000/api';  // Development URL
+  : 'http://localhost:8000/api';  // Development URL
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
