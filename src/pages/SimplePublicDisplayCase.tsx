@@ -85,7 +85,10 @@ export default function SimplePublicDisplayCase() {
         const cardSnap = await getDoc(cardRef);
         if (cardSnap.exists()) {
           const cardData = cardSnap.data() as Card;
-          cards.push({ ...cardData, id: cardSnap.id });
+          // Only add the card if it's not deleted
+          if (!cardData.isDeleted) {
+            cards.push({ ...cardData, id: cardSnap.id });
+          }
         }
       }
       setCards(cards);
@@ -150,7 +153,7 @@ export default function SimplePublicDisplayCase() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-4 gap-2 sm:gap-3 md:gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
                 {cards.map((card: Card) => (
                   <div key={card.id} className="relative group cursor-pointer">
                     {card.imageUrl ? (
@@ -160,7 +163,7 @@ export default function SimplePublicDisplayCase() {
                           alt={`${card.playerName} ${card.year} ${card.cardSet}`}
                           className="rounded-xl w-full shadow-md aspect-[2/3] object-cover"
                         />
-                        <div className="absolute inset-0 bg-black bg-opacity-70 opacity-0 group-hover:opacity-100 transition-all duration-200 hidden sm:flex items-center justify-center text-white text-sm rounded-xl p-2">
+                        <div className="absolute inset-0 bg-black bg-opacity-70 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center text-white text-sm rounded-xl p-2">
                           <div className="text-center">
                             <div className="font-semibold">{card.playerName}</div>
                             <div className="text-xs">{card.year} {card.cardSet}</div>

@@ -487,6 +487,7 @@ const CollectionPage: React.FC = () => {
           onEditCard={handleEditCard} 
           onUpdateCard={handleUpdateSingleCard}
           updatingCardIds={updatingCardIds}
+          isModalOpen={isAddCardModalOpen || !!editingCard}
         />
       )}
 

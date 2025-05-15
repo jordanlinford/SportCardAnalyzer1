@@ -10,13 +10,15 @@ interface CollectionGridProps {
   onEditCard: (card: Card) => void;
   onUpdateCard?: (card: Card) => Promise<void>;
   updatingCardIds?: string[];
+  isModalOpen?: boolean;
 }
 
 const CollectionGrid: React.FC<CollectionGridProps> = ({ 
   cards, 
   onEditCard, 
   onUpdateCard,
-  updatingCardIds = []
+  updatingCardIds = [],
+  isModalOpen = false
 }) => {
   const queryClient = useQueryClient();
 
@@ -42,51 +44,53 @@ const CollectionGrid: React.FC<CollectionGridProps> = ({
           onClick={() => onEditCard(card)}
         >
           {/* Action buttons */}
-          <div className="absolute top-2 right-2 z-30 flex space-x-1">
-            <div onClick={(e) => e.stopPropagation()}>
-              <EmergencyDeleteButton
-                cardId={card.id}
-                onDeleted={handleCardDeleted}
-              />
-            </div>
-            
-            {/* Update button */}
-            {onUpdateCard && (
+          {!isModalOpen && (
+            <div className="absolute top-2 right-2 z-30 flex space-x-1">
+              <div onClick={(e) => e.stopPropagation()}>
+                <EmergencyDeleteButton
+                  cardId={card.id}
+                  onDeleted={handleCardDeleted}
+                />
+              </div>
+              
+              {/* Update button */}
+              {onUpdateCard && (
+                <div onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 bg-white"
+                    onClick={() => onUpdateCard(card)}
+                    disabled={updatingCardIds.includes(card.id)}
+                  >
+                    {updatingCardIds.includes(card.id) ? (
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-solid border-current border-r-transparent" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              )}
+              
+              {/* eBay search button */}
               <div onClick={(e) => e.stopPropagation()}>
                 <Button
                   variant="outline"
                   size="icon"
                   className="h-8 w-8 bg-white"
-                  onClick={() => onUpdateCard(card)}
-                  disabled={updatingCardIds.includes(card.id)}
+                  title="Check on eBay"
+                  onClick={() => {
+                    // Create a full search string for eBay
+                    const searchQuery = `${card.year} ${card.playerName} ${card.cardSet} ${card.variation || ''} ${card.cardNumber} ${card.condition || ''}`;
+                    // Open eBay search in a new tab
+                    window.open(`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(searchQuery)}&_sacat=0&LH_Complete=1&LH_Sold=1`, '_blank');
+                  }}
                 >
-                  {updatingCardIds.includes(card.id) ? (
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-solid border-current border-r-transparent" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
+                  <ExternalLink className="h-4 w-4" />
                 </Button>
               </div>
-            )}
-            
-            {/* eBay search button */}
-            <div onClick={(e) => e.stopPropagation()}>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-8 w-8 bg-white"
-                title="Check on eBay"
-                onClick={() => {
-                  // Create a full search string for eBay
-                  const searchQuery = `${card.year} ${card.playerName} ${card.cardSet} ${card.variation || ''} ${card.cardNumber} ${card.condition || ''}`;
-                  // Open eBay search in a new tab
-                  window.open(`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(searchQuery)}&_sacat=0&LH_Complete=1&LH_Sold=1`, '_blank');
-                }}
-              >
-                <ExternalLink className="h-4 w-4" />
-              </Button>
             </div>
-          </div>
+          )}
 
           {card.imageUrl ? (
             <>

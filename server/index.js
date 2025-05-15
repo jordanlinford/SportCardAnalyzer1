@@ -1006,6 +1006,55 @@ app.post('/api/scrape-card', async (req, res) => {
   }
 });
 
+// Market analysis endpoint
+app.post('/api/market/analyze', async (req, res) => {
+  try {
+    const { playerName, condition = 'raw' } = req.body;
+    
+    if (!playerName) {
+      return res.status(400).json({ error: 'Missing playerName parameter' });
+    }
+
+    // For now, return mock data
+    // TODO: Implement actual market analysis logic
+    res.json({
+      trend: 0.5,
+      investment_rating: "NEUTRAL",
+      volatility: 0.2,
+      liquidity: 0.8,
+      last_updated: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error in market analysis:', error);
+    res.status(500).json({ error: 'Internal server error', message: error.message });
+  }
+});
+
+// Get card price history
+app.get('/api/market/price-history/:playerName', async (req, res) => {
+  try {
+    const { playerName } = req.params;
+    const { condition = 'raw' } = req.query;
+    
+    if (!playerName) {
+      return res.status(400).json({ error: 'Missing playerName parameter' });
+    }
+
+    // For now, return mock data
+    // TODO: Implement actual price history logic
+    res.json({
+      prices: [
+        { date: "2024-03-01", price: 100 },
+        { date: "2024-03-15", price: 120 },
+        { date: "2024-03-20", price: 115 }
+      ]
+    });
+  } catch (error) {
+    console.error('Error getting price history:', error);
+    res.status(500).json({ error: 'Internal server error', message: error.message });
+  }
+});
+
 // Export the Express app for Vercel serverless functions
 export default app;
 
