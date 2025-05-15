@@ -1,9 +1,6 @@
 import dotenv from 'dotenv';
 import Stripe from 'stripe';
 import admin from 'firebase-admin';
-import fs from 'fs';
-import { dirname } from 'path';
-import { fileURLToPath } from 'url';
 
 dotenv.config();
 
@@ -11,27 +8,43 @@ let db;
 try {
   // Check if Firebase Admin is already initialized
   if (!admin.apps.length) {
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    // Use path relative to this file for serverless function
-    const serviceAccountPath = `${__dirname}/../serviceAccountKey.json`;
-    
-    // Check if the file exists
-    if (fs.existsSync(serviceAccountPath)) {
-      const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-      });
-      console.log('Firebase Admin initialized successfully in checkout.js');
+    // For Vercel environment, use environment variable with JSON credentials
+    if (process.env.FIREBASE_ADMIN_CREDENTIALS) {
+      try {
+        const serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_CREDENTIALS);
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+        });
+        console.log('Firebase Admin initialized successfully with credentials from environment');
+      } catch (parseError) {
+        console.error('Error parsing Firebase Admin credentials:', parseError);
+        // Initialize with application default credentials as fallback
+        admin.initializeApp();
+        console.log('Firebase Admin initialized with default credentials (fallback)');
+      }
     } else {
-      console.error('Service account file not found:', serviceAccountPath);
-      // Initialize with application default credentials for Vercel
-      admin.initializeApp();
-      console.log('Firebase Admin initialized with default credentials');
+      // For local development, attempt to use local file
+      try {
+        // This approach works for local development but not in Vercel
+        const serviceAccount = require('../../firebase-adminsdk.json');
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+        });
+        console.log('Firebase Admin initialized successfully with local file');
+      } catch (fileError) {
+        console.error('Error loading local credentials file:', fileError);
+        // Initialize with application default credentials as fallback
+        admin.initializeApp();
+        console.log('Firebase Admin initialized with default credentials (no credentials found)');
+      }
     }
+  } else {
+    console.log('Using existing Firebase Admin app');
   }
+  
   db = admin.firestore();
 } catch (error) {
-  console.error('Error initializing Firebase Admin:', error);
+  console.error('Critical error in Firebase Admin initialization:', error);
 }
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
