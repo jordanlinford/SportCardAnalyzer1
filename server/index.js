@@ -19,23 +19,56 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
 
 const app = express();
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true
 }));
 app.use(express.json());
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', environment: process.env.NODE_ENV || 'development' });
 });
 
-// Initialize Firebase Admin
-const serviceAccount = JSON.parse(fs.readFileSync(__dirname + '/serviceAccountKey.json', 'utf8'));
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
-
-const db = admin.firestore();
+// Initialize Firebase Admin - Safe for both local development and Vercel
+let db;
+try {
+  // Check if Firebase Admin is already initialized
+  if (!admin.apps.length) {
+    // For Vercel environment, use environment variable with JSON credentials
+    if (process.env.FIREBASE_ADMIN_CREDENTIALS) {
+      try {
+        const serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_CREDENTIALS);
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+        });
+        console.log('Firebase Admin initialized successfully with credentials from environment');
+      } catch (parseError) {
+        console.error('Error parsing Firebase Admin credentials:', parseError);
+        throw parseError;
+      }
+    } else {
+      // For local development, attempt to use local file
+      try {
+        // Try path with __dirname for ESM module
+        const serviceAccountPath = `${__dirname}/serviceAccountKey.json`;
+        const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+        });
+        console.log('Firebase Admin initialized successfully with local file');
+      } catch (fileError) {
+        console.error('Error loading local credentials file:', fileError);
+        throw fileError;
+      }
+    }
+  } else {
+    console.log('Using existing Firebase Admin app');
+  }
+  
+  db = admin.firestore();
+} catch (error) {
+  console.error('Critical error in Firebase Admin initialization:', error);
+}
 
 // 1) Create Checkout Session
 app.post('/api/create-checkout-session', async (req, res) => {
@@ -921,42 +954,26 @@ app.post('/api/scrape', async (req, res) => {
   }
 });
 
+// The server startup code with port failover mechanism
 const PORT = process.env.PORT || 3001;
+const MAX_PORT_ATTEMPTS = 10;
 
-// Check if port is already in use and try alternate ports if needed
-const tryListen = (port, maxAttempts = 3) => {
-  let currentPort = port;
-  let attempts = 0;
-  
-  const startServer = () => {
-    try {
-      const server = app.listen(currentPort, () => {
-        console.log(`Server running on port ${currentPort}`);
-      });
-      
-      server.on('error', (e) => {
-        if (e.code === 'EADDRINUSE' && attempts < maxAttempts) {
-          console.log(`Port ${currentPort} is already in use, trying port ${currentPort + 1}`);
-          currentPort++;
-          attempts++;
-          server.close();
-          startServer();
-        } else {
-          console.error(`Error starting server:`, e);
-        }
-      });
-    } catch (error) {
-      console.error(`Failed to start server:`, error);
-      if (attempts < maxAttempts) {
-        console.log(`Trying port ${currentPort + 1}...`);
-        currentPort++;
-        attempts++;
-        startServer();
-      }
+const startServer = async (port, attempt = 0) => {
+  try {
+    app.listen(port, () => {
+      console.log(`Server running on port ${port}`);
+    });
+  } catch (err) {
+    if (err.code === 'EADDRINUSE' && attempt < MAX_PORT_ATTEMPTS) {
+      const nextPort = port + 1;
+      console.log(`Port ${port} is already in use, trying port ${nextPort}`);
+      await startServer(nextPort, attempt + 1);
+    } else {
+      console.error('Failed to start server:', err);
+      process.exit(1);
     }
-  };
-  
-  startServer();
+  }
 };
 
-tryListen(PORT);
+// Start the server
+startServer(PORT);
