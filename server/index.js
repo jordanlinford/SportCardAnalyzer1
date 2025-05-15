@@ -19,8 +19,10 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
 
 const app = express();
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  credentials: true
+  origin: ['https://www.sportscardanalyzer.com', 'https://sportscardanalyzer.com', 'http://localhost:5173'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
 
@@ -1015,14 +1017,59 @@ app.post('/api/market/analyze', async (req, res) => {
       return res.status(400).json({ error: 'Missing playerName parameter' });
     }
 
-    // For now, return mock data
-    // TODO: Implement actual market analysis logic
+    // Use the existing eBay scraping functionality
+    const searchParams = {
+      playerName,
+      condition,
+      grade: condition === 'raw' ? 'Raw' : undefined
+    };
+
+    const listings = await searchRawCards(searchParams);
+    
+    if (listings.length === 0) {
+      return res.status(404).json({ error: 'No market data found' });
+    }
+
+    // Calculate market metrics
+    const prices = listings.map(l => l.totalPrice).filter(p => p > 0);
+    const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
+    const priceRange = maxPrice - minPrice;
+    const volatility = priceRange / avgPrice;
+
+    // Determine trend
+    const recentListings = listings
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 5);
+    const recentAvg = recentListings.reduce((sum, l) => sum + l.totalPrice, 0) / recentListings.length;
+    const trend = recentAvg > avgPrice ? 1 : recentAvg < avgPrice ? -1 : 0;
+
+    // Calculate investment rating
+    let investment_rating = "NEUTRAL";
+    if (trend > 0 && volatility < 0.3) {
+      investment_rating = "STRONG_BUY";
+    } else if (trend > 0) {
+      investment_rating = "BUY";
+    } else if (trend < 0 && volatility > 0.5) {
+      investment_rating = "SELL";
+    } else if (trend < 0) {
+      investment_rating = "HOLD";
+    }
+
     res.json({
-      trend: 0.5,
-      investment_rating: "NEUTRAL",
-      volatility: 0.2,
-      liquidity: 0.8,
-      last_updated: new Date().toISOString()
+      trend,
+      investment_rating,
+      volatility,
+      liquidity: listings.length > 10 ? 0.8 : listings.length > 5 ? 0.5 : 0.2,
+      last_updated: new Date().toISOString(),
+      market_data: {
+        average_price: avgPrice,
+        min_price: minPrice,
+        max_price: maxPrice,
+        total_listings: listings.length,
+        recent_listings: recentListings
+      }
     });
   } catch (error) {
     console.error('Error in market analysis:', error);

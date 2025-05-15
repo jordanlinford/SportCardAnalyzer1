@@ -15,6 +15,10 @@ import { ensurePublicDisplayCase } from '@/utils/displayCaseUtils';
 import { DisplayCaseMetaTags } from '@/components/display-cases/DisplayCaseMetaTags';
 import { HelmetProvider } from 'react-helmet-async';
 import { DisplayCase } from '@/types/display-case';
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { X } from "lucide-react";
 
 export default function SimplePublicDisplayCase() {
   const { publicId } = useParams<{ publicId: string }>();
@@ -24,6 +28,10 @@ export default function SimplePublicDisplayCase() {
   const [isLoading, setIsLoading] = useState(true);
   const [isOwner, setIsOwner] = useState(false);
   const [firstCardImage, setFirstCardImage] = useState<string | undefined>();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedName, setEditedName] = useState("");
+  const [editedTags, setEditedTags] = useState<string[]>([]);
+  const [newTag, setNewTag] = useState("");
 
   useEffect(() => {
     async function loadDisplayCase() {
@@ -102,6 +110,38 @@ export default function SimplePublicDisplayCase() {
     }
   }
 
+  const handleSave = async () => {
+    if (!displayCase || !isOwner) return;
+
+    try {
+      const displayCaseRef = doc(db, 'public_display_cases', displayCase.id);
+      await updateDoc(displayCaseRef, {
+        name: editedName,
+        tags: editedTags
+      });
+
+      setDisplayCase(prev => prev ? {
+        ...prev,
+        name: editedName,
+        tags: editedTags
+      } : null);
+      setIsEditing(false);
+    } catch (error) {
+      console.error("Error updating display case:", error);
+    }
+  };
+
+  const handleAddTag = () => {
+    if (newTag.trim() && !editedTags.includes(newTag.trim())) {
+      setEditedTags([...editedTags, newTag.trim()]);
+      setNewTag("");
+    }
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    setEditedTags(editedTags.filter(tag => tag !== tagToRemove));
+  };
+
   if (isLoading) {
     return <div className="text-center mt-10">Loading...</div>;
   }
@@ -116,9 +156,66 @@ export default function SimplePublicDisplayCase() {
       <div className="p-4 space-y-6 max-w-6xl mx-auto">
         <div className="bg-white rounded-xl shadow-sm p-6">
           <div className="text-center mb-6">
-            <h1 className="text-3xl font-bold mb-2">{displayCase.name}</h1>
-            {displayCase.description && (
-              <p className="text-gray-500 max-w-2xl mx-auto">{displayCase.description}</p>
+            {isEditing && isOwner ? (
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="name">Display Case Name</Label>
+                  <Input
+                    id="name"
+                    value={editedName}
+                    onChange={(e) => setEditedName(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="tags">Tags</Label>
+                  <div className="flex gap-2 mt-1">
+                    <Input
+                      id="tags"
+                      value={newTag}
+                      onChange={(e) => setNewTag(e.target.value)}
+                      placeholder="Add a tag"
+                      onKeyPress={(e) => e.key === 'Enter' && handleAddTag()}
+                    />
+                    <Button onClick={handleAddTag}>Add</Button>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {editedTags.map(tag => (
+                      <Badge key={tag} variant="secondary" className="flex items-center gap-1">
+                        {tag}
+                        <X
+                          className="h-3 w-3 cursor-pointer"
+                          onClick={() => handleRemoveTag(tag)}
+                        />
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex justify-center gap-2">
+                  <Button onClick={handleSave}>Save</Button>
+                  <Button variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <h1 className="text-3xl font-bold mb-2">{displayCase?.name}</h1>
+                {displayCase?.description && (
+                  <p className="text-gray-500 max-w-2xl mx-auto">{displayCase.description}</p>
+                )}
+                {isOwner && (
+                  <Button
+                    variant="outline"
+                    className="mt-4"
+                    onClick={() => {
+                      setEditedName(displayCase?.name || "");
+                      setEditedTags(displayCase?.tags || []);
+                      setIsEditing(true);
+                    }}
+                  >
+                    Edit Display Case
+                  </Button>
+                )}
+              </>
             )}
           </div>
 
