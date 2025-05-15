@@ -258,7 +258,7 @@ async function scrapeEbay(url) {
   }
 }
 
-export default async function handler(req, res) {
+export async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
