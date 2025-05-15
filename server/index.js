@@ -968,6 +968,44 @@ app.post('/api/scrape', async (req, res) => {
   }
 });
 
+// Add scraper endpoint
+app.post('/api/scrape-card', async (req, res) => {
+  try {
+    const { playerName, year, cardSet, cardNumber, variation, grade, condition, negKeywords } = req.body;
+    
+    // Build search query
+    const searchParams = {
+      playerName,
+      year,
+      cardSet,
+      cardNumber,
+      variation,
+      grade,
+      condition,
+      negKeywords
+    };
+    
+    // Build eBay search URL
+    const searchUrl = buildEbaySearchUrl(searchParams);
+    
+    // Scrape eBay listings
+    const listings = await scrapeEbay(searchUrl);
+    
+    // Return results
+    res.json({
+      success: true,
+      listings,
+      count: listings.length
+    });
+  } catch (error) {
+    console.error('Error scraping card:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Export the Express app for Vercel serverless functions
 export default app;
 
