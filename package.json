@@ -10,7 +10,9 @@
     "test": "vitest run --environment jsdom",
     "scraper": "node server/scraper.js",
     "scraper:daemon": "./server/start.sh",
-    "scraper:test": "node server/sample-client.js"
+    "scraper:test": "node server/sample-client.js",
+    "dev:server": "cd server && npm run dev",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:server\""
   },
   "dependencies": {
     "@hookform/resolvers": "^5.0.1",
@@ -76,6 +78,7 @@
     "@typescript-eslint/parser": "^5.0.0",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.0",
+    "concurrently": "^9.1.2",
     "eslint": "^8.0.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
