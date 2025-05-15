@@ -1,8 +1,9 @@
 import * as admin from 'firebase-admin';
 
-let adminApp;
-let adminDb;
-let adminAuth;
+// Define explicit types for our export variables
+let adminApp: admin.app.App | any;
+let adminDb: admin.firestore.Firestore | any;
+let adminAuth: admin.auth.Auth | any;
 let isInitialized = false;
 
 try {

@@ -1,4 +1,5 @@
 import { adminDb, adminAuth } from "../lib/firebaseAdmin";
+import * as admin from 'firebase-admin';
 
 interface SearchRequest {
   playerName: string;
@@ -9,6 +10,11 @@ interface SearchRequest {
   condition: string;
   price: number | null;
   savedAt: string;
+}
+
+interface DecodedIdToken {
+  uid: string;
+  [key: string]: any;
 }
 
 export async function saveSearchEndpoint(req: Request) {
@@ -35,12 +41,21 @@ export async function saveSearchEndpoint(req: Request) {
 
   try {
     console.log("Verifying ID token...");
-    const decoded = await adminAuth.verifyIdToken(idToken);
+    const decoded = await adminAuth.verifyIdToken(idToken) as DecodedIdToken;
     const uid = decoded.uid;
     console.log("Token verified for user:", uid);
 
     const searchData: SearchRequest = await req.json();
     console.log("Received search data:", searchData);
+
+    // Check if adminDb is available (it may not be in a serverless environment)
+    if (!adminDb) {
+      console.error("Firebase Admin DB not initialized");
+      return new Response(
+        JSON.stringify({ message: "Database connection error" }),
+        { status: 500 }
+      );
+    }
 
     const docRef = adminDb.collection("users").doc(uid).collection("saved_searches").doc();
     await docRef.set({
