@@ -14,26 +14,31 @@ service cloud.firestore {
 
     // Rules for user collections
     match /users/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read: if isAuthenticated();  // Allow authenticated users to read
+      allow write: if isOwner(userId);
       
       // Rules for user's collection subcollection
       match /collection/{document=**} {
-        allow read, write: if isOwner(userId);
+        allow read: if isAuthenticated();  // Allow authenticated users to read
+        allow write: if isOwner(userId);
       }
       
       // Rules for user's cards subcollection (legacy path)
       match /cards/{document=**} {
-        allow read, write: if isOwner(userId);
+        allow read: if isAuthenticated();  // Allow authenticated users to read
+        allow write: if isOwner(userId);
       }
       
       // Rules for user's saved searches subcollection
       match /saved_searches/{document=**} {
-        allow read, write: if isOwner(userId);
+        allow read: if isAuthenticated();  // Allow authenticated users to read
+        allow write: if isOwner(userId);
       }
       
       // Rules for user's display cases
       match /display_cases/{displayCaseId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isAuthenticated();  // Allow authenticated users to read
+        allow write: if isOwner(userId);
       }
     }
 
