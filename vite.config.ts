@@ -1,9 +1,11 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
-import { saveSearchEndpoint } from './src/api/save-search'
 
 export default defineConfig({
+  server: {
+    port: 5173, // Set fixed port
+  },
   plugins: [
     react(),
     {
@@ -11,6 +13,8 @@ export default defineConfig({
       configureServer(server) {
         server.middlewares.use('/api/save-search', async (req, res) => {
           if (req.method === 'POST') {
+            // Dynamically import the endpoint only when needed
+            const { saveSearchEndpoint } = await import('./src/api/save-search')
             const response = await saveSearchEndpoint(req as any)
             res.statusCode = response.status
             res.setHeader('Content-Type', 'application/json')

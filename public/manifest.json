@@ -1,6 +1,6 @@
 {
-  "short_name": "Sports Card Analyzer",
-  "name": "Sports Card Analyzer Pro",
+  "short_name": "Card Analyzer",
+  "name": "Sports Card Analyzer",
   "icons": [
     {
       "src": "favicon.ico",
@@ -20,10 +20,9 @@
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#0f172a",
-  "background_color": "#f8fafc",
+  "theme_color": "#000000",
+  "background_color": "#ffffff",
   "orientation": "portrait",
-  "scope": "/",
-  "categories": ["sports", "collecting", "trading cards"],
-  "description": "Analyze, track, and manage your sports card collection professionally"
+  "description": "Track, analyze and manage your sports card collection",
+  "categories": ["sports", "cards", "collection"]
 } 

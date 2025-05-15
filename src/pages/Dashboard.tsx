@@ -1,13 +1,21 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useCards } from "@/hooks/useCards";
 import { Card as CardType } from "@/types/Card";
 import { MessageCenter } from "@/components/MessageCenter";
 import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useDisplayCases } from '@/hooks/display/useDisplayCases';
+import { db } from '@/lib/firebase/config';
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { Line } from 'react-chartjs-2'; // Make sure to install react-chartjs-2 and chart.js
+import { useAuth } from "@/context/AuthContext";
 
 export default function Dashboard() {
   const { data: cards = [], isLoading, error, retryFetchCards } = useCards();
-  
+  const { displayCases = [], isLoading: isLoadingCases } = useDisplayCases();
+  const [valueHistory, setValueHistory] = useState<{ timestamp: any; totalValue: number }[]>([]);
+  const { user } = useAuth();
+
   console.log("Dashboard rendering with cards:", cards.length, "isLoading:", isLoading, "error:", !!error);
 
   // Basic Stats - handle undefined values correctly
@@ -50,9 +58,42 @@ export default function Dashboard() {
 
   const mostValuableCardValue = mostValuableCard.currentValue || mostValuableCard.price || 0;
 
+  // Add graded card count logic
+  function isGraded(condition: string | undefined) {
+    if (!condition) return false;
+    const normalized = condition.toUpperCase();
+    return (
+      normalized.includes("PSA") ||
+      normalized.includes("BGS") ||
+      normalized.includes("SGC") ||
+      normalized.includes("CGC")
+    );
+  }
+  const gradedCardCount = cards.filter(card => isGraded(card.condition)).length;
+
+  // Most Active Display Case
+  const mostActiveDisplayCase = displayCases.length > 0
+    ? displayCases.reduce((max, dc) => {
+        const activity = (dc.likes || 0) + (dc.comments?.length || 0) + (dc.visits || 0);
+        const maxActivity = (max.likes || 0) + (max.comments?.length || 0) + (max.visits || 0);
+        return activity > maxActivity ? dc : max;
+      }, displayCases[0])
+    : null;
+
+  useEffect(() => {
+    async function fetchValueHistory() {
+      if (!user) return;
+      const q = query(collection(db, 'users', user.uid, 'value_history'), orderBy('timestamp'));
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map((doc: any) => doc.data() as { timestamp: any; totalValue: number });
+      setValueHistory(data);
+    }
+    fetchValueHistory();
+  }, [user]);
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-3xl font-bold mb-6">📊 Collection Dashboard</h1>
+      <h1 className="text-3xl font-bold mb-6">Collection Dashboard</h1>
       
       {/* Loading indicator */}
       {isLoading && (
@@ -82,28 +123,24 @@ export default function Dashboard() {
         <DashboardCard 
           title="Total Cards" 
           value={isLoading ? "Loading..." : totalCards}
-          icon="🎴"
           isLoading={isLoading}
           hasError={!!error && !isLoading}
         />
         <DashboardCard 
           title="Total Value" 
           value={isLoading ? "Loading..." : `$${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          icon="💰"
           isLoading={isLoading}
           hasError={!!error && !isLoading}
         />
         <DashboardCard 
           title="Average Price" 
           value={isLoading ? "Loading..." : `$${averagePricePaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          icon="📊"
           isLoading={isLoading}
           hasError={!!error && !isLoading}
         />
         <DashboardCard 
           title="ROI" 
           value={isLoading ? "Loading..." : `${roiPercentage.toFixed(1)}%`}
-          icon="📈"
           valueColor={roiPercentage >= 0 ? "text-green-600" : "text-red-600"}
           isLoading={isLoading}
           hasError={!!error && !isLoading}
@@ -143,45 +180,52 @@ export default function Dashboard() {
               value={topPlayer}
             />
             <InsightRow 
+              label="Graded Cards"
+              value={gradedCardCount}
+            />
+            <InsightRow 
               label="Total Profit/Loss"
               value={`$${totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
               valueColor={totalProfit >= 0 ? "text-green-600" : "text-red-600"}
             />
+            {mostActiveDisplayCase && (
+              <InsightRow
+                label="Most Active Display Case"
+                value={`${mostActiveDisplayCase.name} (❤️ ${mostActiveDisplayCase.likes || 0}, 💬 ${mostActiveDisplayCase.comments?.length || 0}, 👁️ ${mostActiveDisplayCase.visits || 0})`}
+              />
+            )}
               </>
             )}
           </div>
         </div>
 
         <div className="bg-white shadow rounded-lg p-6 border border-gray-200">
-          <h2 className="text-xl font-semibold mb-4">Grade Distribution</h2>
-          {isLoading ? (
-            <div className="flex justify-center py-4">
-              <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
-            </div>
-          ) : error ? (
-            <div className="flex justify-center py-4 text-red-500">
-              Unable to load grade distribution
-            </div>
-          ) : totalCards > 0 ? (
-            <div className="space-y-4">
-              {Object.entries(gradeCount).map(([grade, count]) => (
-                <div key={grade} className="flex items-center">
-                  <div className="w-24 text-sm text-gray-600">{grade}</div>
-                  <div className="flex-1">
-                    <div className="h-4 bg-gray-200 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-blue-500 rounded-full"
-                        style={{ width: `${(count / totalCards) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                  <div className="w-12 text-sm text-gray-600 text-right">{count}</div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-gray-500 italic">No cards to display</div>
-          )}
+          <h2 className="text-xl font-semibold mb-4">Collection Value Over Time</h2>
+          <div className="my-8">
+            {valueHistory.length > 1 ? (
+              <Line
+                data={{
+                  labels: valueHistory.map(v => v.timestamp.toDate().toLocaleDateString()),
+                  datasets: [
+                    {
+                      label: 'Total Value',
+                      data: valueHistory.map(v => v.totalValue),
+                      borderColor: 'rgb(34,197,94)',
+                      backgroundColor: 'rgba(34,197,94,0.2)',
+                      tension: 0.3,
+                    },
+                  ],
+                }}
+                options={{
+                  responsive: true,
+                  plugins: { legend: { display: false } },
+                  scales: { y: { beginAtZero: true } },
+                }}
+              />
+            ) : (
+              <div className="text-gray-500">No value history yet. Update all card values to start tracking.</div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -191,14 +235,12 @@ export default function Dashboard() {
 function DashboardCard({ 
   title, 
   value, 
-  icon,
   valueColor = "text-gray-900",
   isLoading = false,
   hasError = false
 }: { 
   title: string; 
   value: string | number;
-  icon?: string;
   valueColor?: string;
   isLoading?: boolean;
   hasError?: boolean;
@@ -206,7 +248,6 @@ function DashboardCard({
   return (
     <div className="bg-white dark:bg-background-dark rounded-2xl shadow-lg p-6 flex flex-col items-start gap-2 border border-gray-100 dark:border-gray-800 hover:shadow-xl transition-shadow group cursor-pointer">
       <div className="flex items-center gap-3 mb-2">
-        {icon && <span className="text-3xl md:text-4xl text-primary dark:text-secondary drop-shadow font-heading">{icon}</span>}
         <h2 className="font-heading text-lg md:text-xl text-primary dark:text-secondary uppercase tracking-wide">{title}</h2>
       </div>
       {isLoading ? (

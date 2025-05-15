@@ -11,6 +11,7 @@ import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { LikeService } from "@/services/LikeService";
 import { v4 as uuidv4 } from "uuid";
+import { useDisplayCases } from '@/hooks/display/useDisplayCases';
 
 interface LikeButtonProps {
   displayCaseId: string;
@@ -24,6 +25,17 @@ export function LikeButton({ displayCaseId }: LikeButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
+  const { displayCases = [], isLoading: isLoadingCases } = useDisplayCases();
+
+  // Most Active Display Case
+  const mostActiveDisplayCase = displayCases.length > 0
+    ? displayCases.reduce((max, dc) => {
+        const activity = (dc.likes || 0) + (dc.comments?.length || 0) + (dc.visits || 0);
+        const maxActivity = (max.likes || 0) + (max.comments?.length || 0) + (max.visits || 0);
+        return activity > maxActivity ? dc : max;
+      }, displayCases[0])
+    : null;
+
   // Get or create anonymous ID for non-authenticated users
   const getAnonymousId = () => {
     let anonymousId = localStorage.getItem('anonymousUserId');

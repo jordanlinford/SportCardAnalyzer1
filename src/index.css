@@ -2,6 +2,60 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  /* Mobile optimizations */
+  html {
+    touch-action: manipulation;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  
+  /* Prevent zooming on iOS when clicking on inputs */
+  input, button, select, textarea {
+    font-size: 16px; /* Prevents iOS zoom on focus */
+  }
+  
+  /* Better tap targets */
+  a, button, [role="button"] {
+    @apply touch-manipulation min-h-[44px] min-w-[44px] flex items-center;
+  }
+  
+  /* Improve form controls on mobile */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  textarea {
+    @apply px-3 py-2;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+}
+
+@layer components {
+  /* Create responsive container padding */
+  .container-mobile {
+    @apply px-3 sm:px-4 md:px-6;
+  }
+  
+  /* Add safe area insets for iOS devices */
+  .safe-area-inset {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  /* Mobile card styles */
+  .mobile-card {
+    @apply touch-manipulation relative rounded-lg sm:rounded-xl 
+           transition-shadow duration-200 shadow-sm
+           hover:shadow-md active:shadow-inner;
+  }
+}
+
+/* Default theme classes can go here */
+
 .input {
   @apply px-3 py-2 border rounded-md w-full;
 }

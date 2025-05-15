@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { User, getAuth, onAuthStateChanged, signOut, signInWithPopup, GoogleAuthProvider, updateProfile as fbUpdateProfile, updateEmail as fbUpdateEmail } from "firebase/auth";
+import { User, getAuth, onAuthStateChanged, signOut, signInWithPopup, GoogleAuthProvider, updateProfile as fbUpdateProfile, updateEmail as fbUpdateEmail, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { toast } from "sonner";
@@ -10,6 +10,9 @@ interface AuthContextType {
   loading: boolean;
   logout: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
+  signUpWithEmail: (email: string, password: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   updateProfile: (profile: { displayName?: string; photoURL?: string }) => Promise<void>;
   updateEmail: (email: string) => Promise<void>;
 }
@@ -19,6 +22,9 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   logout: async () => {},
   signInWithGoogle: async () => {},
+  signInWithEmail: async () => {},
+  signUpWithEmail: async () => {},
+  resetPassword: async () => {},
   updateProfile: async () => {},
   updateEmail: async () => {},
 });
@@ -49,7 +55,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (user) {
         await createUserIfNotExists(user);
         setUser(user);
-        toast.success(`Welcome back, ${user.displayName}!`);
       } else {
         setUser(null);
       }
@@ -101,6 +106,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const signInWithEmail = async (email: string, password: string) => {
+    try {
+      const result = await signInWithEmailAndPassword(auth, email, password);
+      await createUserIfNotExists(result.user);
+      toast.success("Successfully signed in!");
+    } catch (error: any) {
+      console.error("Error signing in with email:", error);
+      toast.error(error.message || "Failed to sign in. Please try again.");
+      throw error;
+    }
+  };
+
+  const signUpWithEmail = async (email: string, password: string) => {
+    try {
+      const result = await createUserWithEmailAndPassword(auth, email, password);
+      await createUserIfNotExists(result.user);
+      toast.success("Account created successfully!");
+    } catch (error: any) {
+      console.error("Error creating account:", error);
+      toast.error(error.message || "Failed to create account. Please try again.");
+      throw error;
+    }
+  };
+
+  const resetPassword = async (email: string) => {
+    try {
+      await sendPasswordResetEmail(auth, email);
+      toast.success("Password reset email sent. Please check your inbox.");
+    } catch (error: any) {
+      console.error("Error sending password reset:", error);
+      toast.error(error.message || "Failed to send password reset email. Please try again.");
+      throw error;
+    }
+  };
+
   const updateProfile = async (profile: { displayName?: string; photoURL?: string }) => {
     if (!auth.currentUser) throw new Error("No user");
     await fbUpdateProfile(auth.currentUser, profile);
@@ -120,7 +160,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, logout, signInWithGoogle, updateProfile, updateEmail }}>
+    <AuthContext.Provider 
+      value={{ 
+        user, 
+        loading, 
+        logout, 
+        signInWithGoogle, 
+        signInWithEmail,
+        signUpWithEmail,
+        resetPassword,
+        updateProfile, 
+        updateEmail 
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDisplayCases } from "@/hooks/display/useDisplayCases";
+import { useDisplayCasesWithCards } from "@/hooks/useDisplayCasesWithCards";
 import { useCards } from "@/hooks/useCards";
 import { DisplayCase } from "@/types/display-case";
 import { Card } from "@/types/Card";
@@ -17,6 +18,10 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { useUserSubscription } from "@/hooks/useUserSubscription";
+import { DisplayCaseDebugPreview } from "@/components/DisplayCaseDebugPreview";
+import { DisplayCaseImageTest } from "@/components/DisplayCaseImageTest";
+import DisplayCaseCard from "@/components/display-cases/DisplayCaseCard";
+import { CardDebugDisplay } from "@/components/CardDebugDisplay";
 
 const woodBg = "bg-[url('https://www.transparenttextures.com/patterns/wood-pattern.png')] bg-amber-100";
 const glassOverlay = "absolute inset-0 bg-gradient-to-b from-white/40 to-white/10 pointer-events-none rounded-lg";
@@ -25,7 +30,12 @@ const shadow = "shadow-xl";
 const badge = "absolute top-2 right-2 bg-yellow-700 text-white text-xs px-3 py-1 rounded-full font-semibold shadow-md z-10";
 
 export default function DisplayCasesPage() {
-  const { displayCases = [], isLoading, deleteDisplayCase, createDisplayCase, refetch } = useDisplayCases();
+  // Use the original hook for mutations
+  const { deleteDisplayCase, createDisplayCase, refetch } = useDisplayCases();
+  
+  // Use the new hook for display cases with cards
+  const { displayCases, loading: isLoading } = useDisplayCasesWithCards();
+  
   const { data: cards = [] } = useCards();
   const { user } = useAuth();
   const { isAdmin } = useUserSubscription();
@@ -37,6 +47,7 @@ export default function DisplayCasesPage() {
   const [directCards, setDirectCards] = useState<any[]>([]);
   const [isDirectlyLoading, setIsDirectlyLoading] = useState(true);
   const navigate = useNavigate();
+  const [showDebug, setShowDebug] = useState(false);
 
   // Example: If you have a display case limit, allow unlimited for admins
   const MAX_DISPLAY_CASES = 5; // or whatever your normal limit is
@@ -153,34 +164,6 @@ export default function DisplayCasesPage() {
     return directCards.filter(card => cardMatchesDisplayCase(card, displayCase));
   };
 
-  // Directly render card thumbnails
-  const DirectCardThumbnails = ({ displayCase }: { displayCase: any }) => {
-    const matchingCards = getMatchingCardsForCase(displayCase);
-    
-    if (matchingCards.length === 0) {
-      return <div className="text-xs text-amber-400">No matching cards</div>;
-    }
-    
-    // Take up to 4 cards
-    const displayCards = matchingCards.slice(0, 4);
-    
-    return (
-      <>
-        {/* Glass overlay */}
-        <div className={glassOverlay} />
-        {displayCards.map((card, idx) => (
-          <img
-            key={idx}
-            src={card.imageUrl || "https://via.placeholder.com/300x420?text=No+Image"}
-            alt={card.playerName || "Card thumbnail"}
-            className="w-16 h-24 object-cover rounded shadow-lg border-2 border-amber-200 bg-white/80 group-hover:shadow-yellow-400/40 transition-all duration-200"
-            style={{ boxShadow: '0 2px 8px 0 rgba(0,0,0,0.18), 0 0 0 2px #eab30833' }}
-          />
-        ))}
-      </>
-    );
-  };
-
   // Define CardThumbnails component for displaying card images
   const CardThumbnails = ({ displayCase }: { displayCase: DisplayCase }) => {
     const { cardImageUrls, hasMatches } = useCardTagMatch(cards, displayCase);
@@ -192,14 +175,14 @@ export default function DisplayCasesPage() {
     return (
       <>
         {/* Glass overlay */}
-        <div className={glassOverlay} />
+        <div className={`${glassOverlay} z-0`} />
         {cardImageUrls.map((src, idx) => (
           <img
             key={idx}
             src={src}
             alt="Card thumbnail"
-            className="w-16 h-24 object-cover rounded shadow-lg border-2 border-amber-200 bg-white/80 group-hover:shadow-yellow-400/40 transition-all duration-200"
-            style={{ boxShadow: '0 2px 8px 0 rgba(0,0,0,0.18), 0 0 0 2px #eab30833' }}
+            className="w-16 h-24 object-cover rounded shadow-lg border-2 border-amber-200 bg-white/80 group-hover:shadow-yellow-400/40 transition-all duration-200 relative z-10"
+            style={{ boxShadow: '0 2px 8px 0 rgba(0,0,0,0.18), 0 0 0 2px #eab30833', position: 'relative' }}
           />
         ))}
       </>
@@ -233,17 +216,181 @@ export default function DisplayCasesPage() {
     if (openDropdownId) setOpenDropdownId(null);
   };
 
+  // Simple card preview with pure CSS, no fancy stuff
+  const SimpleCardPreview = ({ index }: { index: number }) => {
+    // Basic colors
+    const colors = ["#2563eb", "#dc2626", "#16a34a", "#ea580c"];
+    const color = colors[index % colors.length];
+    
+    return (
+      <div
+        style={{
+          width: '60px',
+          height: '80px',
+          backgroundColor: color,
+          borderRadius: '6px',
+          color: 'white',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontWeight: 'bold',
+          fontSize: '16px'
+        }}
+      >
+        {index + 1}
+      </div>
+    );
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto" onClick={handlePageClick}>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold">Display Cases</h1>
-        <button
-          className="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700 transition"
-          onClick={() => setIsModalOpen(true)}
-          disabled={!canCreateDisplayCase}
-        >
-          + Create Display Case
-        </button>
+        <div className="flex gap-2">
+          <button
+            className="bg-gray-200 text-gray-800 px-4 py-2 rounded shadow hover:bg-gray-300 transition"
+            onClick={() => setShowDebug(!showDebug)}
+          >
+            {showDebug ? 'Hide Debug' : 'Show Debug'}
+          </button>
+          <button
+            className="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700 transition"
+            onClick={() => setIsModalOpen(true)}
+            disabled={!canCreateDisplayCase}
+          >
+            + Create Display Case
+          </button>
+        </div>
+      </div>
+
+      {/* Debug display */}
+      {showDebug && (
+        <div className="mb-8">
+          <CardDebugDisplay />
+        </div>
+      )}
+
+      {/* Login notification for unauthenticated users */}
+      {!user && (
+        <div className="mb-6 p-4 bg-amber-50 border-l-4 border-amber-500 text-amber-700">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-amber-500" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium">Authentication Required</h3>
+              <div className="mt-2 text-sm">
+                <p>You are not logged in. Firebase security rules prevent accessing card data without authentication.</p>
+                <p className="mt-1">Placeholder cards are being shown instead of actual card data.</p>
+                <div className="mt-3">
+                  <button 
+                    className="bg-amber-100 hover:bg-amber-200 text-amber-800 font-bold py-1 px-4 rounded text-sm transition"
+                    onClick={() => navigate('/login')}
+                  >
+                    Login
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pure CSS and SVG Test - No external images */}
+      <div className="mb-8 p-4 border-2 border-red-500 bg-white rounded-lg">
+        <h2 className="text-xl font-bold mb-4">CSS & Color Block Cards (No External Images)</h2>
+        
+        {/* CSS-only cards */}
+        <div className="mb-6">
+          <h3 className="text-lg font-medium mb-3">Pure CSS Cards</h3>
+          <div className="flex gap-4">
+            {/* Simple colored box cards instead of complex CSS */}
+            <div className="w-[100px] h-[150px] rounded-lg border-2 border-blue-500 bg-blue-100 flex items-center justify-center">
+              <span className="text-blue-700 font-semibold">Card 1</span>
+            </div>
+            
+            <div className="w-[100px] h-[150px] rounded-lg border-2 border-red-500 bg-red-100 flex items-center justify-center">
+              <span className="text-red-700 font-semibold">Card 2</span>
+            </div>
+            
+            <div className="w-[100px] h-[150px] rounded-lg border-2 border-green-500 bg-green-100 flex items-center justify-center">
+              <span className="text-green-700 font-semibold">Card 3</span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Simple colored cards replacing SVG Cards */}
+        <div>
+          <h3 className="text-lg font-medium mb-3">Simple Color Block Cards</h3>
+          <div className="flex gap-4">
+            {/* Colored box 1 */}
+            <div 
+              style={{
+                width: "100px",
+                height: "150px",
+                backgroundColor: "#0ea5e9",
+                borderRadius: "8px",
+                border: "2px solid #333",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "white",
+                fontWeight: "bold",
+                fontSize: "14px",
+                boxShadow: "0 2px 4px rgba(0,0,0,0.2)"
+              }}
+            >
+              Blue Card
+            </div>
+            
+            {/* Colored box 2 */}
+            <div 
+              style={{
+                width: "100px",
+                height: "150px",
+                backgroundColor: "#dc2626",
+                borderRadius: "8px",
+                border: "2px solid #333",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "white",
+                fontWeight: "bold",
+                fontSize: "14px",
+                boxShadow: "0 2px 4px rgba(0,0,0,0.2)"
+              }}
+            >
+              Red Card
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* New display cases with card images */}
+      <div className="mb-8">
+        <h2 className="text-xl font-bold mb-4">Display Cases With Real Card Images</h2>
+        {isLoading ? (
+          <div className="text-center p-4">Loading display cases...</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+            {displayCases.map((displayCase) => (
+              <DisplayCaseCard key={displayCase.id} displayCase={displayCase} />
+            ))}
+            {displayCases.length === 0 && (
+              <div className="col-span-full text-center py-8 text-gray-500">
+                No display cases found. Create your first display case to showcase your collection!
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      
+      {/* Image Display Test Component */}
+      <div className="mb-8">
+        <h2 className="text-xl font-bold mb-4">Image Rendering Test</h2>
+        <DisplayCaseImageTest />
       </div>
 
       {/* Create Display Case Modal */}
@@ -285,6 +432,11 @@ export default function DisplayCasesPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">
           {directDisplayCases.map((displayCase) => {
+            // Set default values for missing metrics
+            const likes = displayCase.likes || 0;
+            const commentCount = displayCase.comments?.length || 0;
+            const visits = displayCase.visits || 0;
+            
             return (
               <div
                 key={displayCase.id}
@@ -353,9 +505,41 @@ export default function DisplayCasesPage() {
                       <span className="text-xs text-amber-400">No tags</span>
                     )}
                   </div>
+                  
+                  {/* Display metrics with static fallbacks */}
+                  <div className="flex items-center gap-4 mt-2 text-xs text-amber-600">
+                    <span title="Likes">❤️ {likes}</span>
+                    <span title="Comments">💬 {commentCount}</span>
+                    <span title="Views">👁️ {visits}</span>
+                  </div>
+
+                  {/* Ultra-simple colored boxes for cards */}
+                  <div className="flex gap-2 mt-3 mb-2">
+                    {Array.from({ length: Math.min(displayCase.cardIds?.length || 3, 3) }).map((_, idx) => (
+                      <SimpleCardPreview key={idx} index={idx} />
+                    ))}
+                    
+                    {(displayCase.cardIds?.length || 0) > 3 && (
+                      <div style={{
+                        width: '60px',
+                        height: '80px',
+                        backgroundColor: '#d1d5db',
+                        borderRadius: '6px',
+                        color: '#4b5563',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 'bold'
+                      }}>
+                        +{(displayCase.cardIds?.length || 0) - 3}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="relative flex gap-2 p-4 justify-center items-center min-h-[90px] bg-amber-50 rounded-b-2xl">
-                  <DirectCardThumbnails displayCase={displayCase} />
+                <div className="relative flex flex-col p-4 bg-amber-50 rounded-b-2xl">
+                  {/* DisplayCaseDebugPreview goes after our cards */}
+                  <h3 className="text-sm font-semibold mb-2">Cards in this case:</h3>
+                  <DisplayCaseDebugPreview cardIds={displayCase.cardIds} />
                 </div>
               </div>
             );

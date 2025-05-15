@@ -134,20 +134,18 @@ export function EditCardForm({ card, isOpen, onClose, onCardUpdated, onCardDelet
 
           <div className="space-y-2">
             <Label htmlFor="condition" id="condition-label">Condition</Label>
-            <select
+            <Input
               id="condition"
-              value={editedCard.condition || 'Near Mint'}
+              type="text"
+              value={editedCard.condition || ''}
               onChange={(e) => setEditedCard(prev => ({ ...prev, condition: e.target.value }))}
-              className="w-full p-2 border border-gray-300 rounded-md"
+              placeholder='e.g. "Raw", "PSA 10", "SGC 9.5"'
               required
               aria-label="Card Condition"
-            >
-              <option value="Mint">Mint</option>
-              <option value="Near Mint">Near Mint</option>
-              <option value="Excellent">Excellent</option>
-              <option value="Good">Good</option>
-              <option value="Poor">Poor</option>
-            </select>
+            />
+            <small className="text-gray-500">
+              Examples: Raw, PSA 10, SGC 9.5, BGS 8, etc.
+            </small>
           </div>
 
           <div className="space-y-2">

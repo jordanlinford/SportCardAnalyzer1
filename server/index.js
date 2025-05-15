@@ -24,6 +24,11 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
 // Initialize Firebase Admin
 const serviceAccount = JSON.parse(fs.readFileSync(__dirname + '/serviceAccountKey.json', 'utf8'));
 admin.initializeApp({

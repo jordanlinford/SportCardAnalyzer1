@@ -18,6 +18,7 @@ export interface DisplayCase {
   description?: string;
   likes?: number;
   comments?: DisplayCaseComment[];
+  visits?: number;
 }
 
 export interface CreateDisplayCaseData {

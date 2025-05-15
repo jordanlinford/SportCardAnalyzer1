@@ -11,13 +11,13 @@ import { EnhancedShareButton } from "@/components/display/EnhancedShareButton";
 import { DisplayCaseDebugging } from '@/components/display-cases/DisplayCaseDebugging';
 import { SyncDisplayCase } from '@/components/display-cases/SyncDisplayCase';
 import { CardDebugger } from '@/components/display-cases/CardDebugger';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ensurePublicDisplayCase } from '@/utils/displayCaseUtils';
 import { Button } from "@/components/ui/button";
-import { doc, getDoc, updateDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, getDocs, query, where, increment } from 'firebase/firestore';
 import { db } from "@/lib/firebase/config";
 import { DisplayCaseLoading } from '@/components/display-cases/DisplayCaseLoading';
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/context/AuthContext";
 
 // Fallback cards to show when no real cards can be loaded
 const fallbackCards: Card[] = [
@@ -208,6 +208,19 @@ export default function PublicDisplayCase() {
     }
   };
 
+  const handleView = useCallback(async () => {
+    if (!displayCase) return;
+    
+    try {
+      const displayCaseRef = doc(db, "public_display_cases", displayCase.id);
+      await updateDoc(displayCaseRef, {
+        visits: increment(1)
+      });
+    } catch (error) {
+      console.error("Error updating view count:", error);
+    }
+  }, [displayCase]);
+
   // Debug output
   console.log("PublicDisplayCase rendering with publicId:", publicId);
   if (displayCase) {
@@ -297,6 +310,12 @@ export default function PublicDisplayCase() {
   // Use either real cards or fallback cards
   const displayCards = cards.length > 0 ? cards : (usingFallbackCards ? fallbackCards : []);
 
+  useEffect(() => {
+    if (displayCase) {
+      handleView();
+    }
+  }, [displayCase, handleView]);
+
   return (
     <div className="p-4 space-y-6 max-w-6xl mx-auto">
       <div className="bg-white rounded-xl shadow-sm p-6">
@@ -313,20 +332,18 @@ export default function PublicDisplayCase() {
           <LikeButton displayCaseId={displayCase.id} />
         </div>
 
-        <div className="mt-4 flex justify-center space-x-2">
-          {displayCase?.publicId && (
-            <EnhancedShareButton 
-              publicId={displayCase.publicId} 
-              title={displayCase.name}
-            />
-          )}
-          {displayCase?.userId && user && (
-            <MessageSellerButton 
-              sellerId={displayCase.userId} 
-              displayCaseId={displayCase.id}
-              sellerName="Owner"
-            />
-          )}
+        <div className="flex items-center space-x-4 mb-4">
+          <LikeButton displayCaseId={displayCase.id} />
+          <EnhancedShareButton 
+            publicId={displayCase.publicId} 
+            title={displayCase.name}
+          />
+          <MessageSellerButton 
+            sellerId={displayCase.userId} 
+            displayCaseId={displayCase.id}
+            sellerName="Owner"
+          />
+          <span className="text-gray-500">👁️ {displayCase.visits || 0} views</span>
         </div>
         
         {cards.length === 0 && !usingFallbackCards && (

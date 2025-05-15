@@ -9,9 +9,8 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
-
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2022-11-15',
+  apiVersion: '2025-04-30.basil',
 });
 
 // Set this secret in your Stripe dashboard
@@ -35,10 +34,12 @@ export default async function handler(
   const buf = await buffer(req);
 
   let event: Stripe.Event;
-
   try {
+    if (!sig) {
+      throw new Error('No signature found');
+    }
     event = stripe.webhooks.constructEvent(buf, sig, endpointSecret);
-  } catch (err) {
+  } catch (err: any) {
     console.error('Webhook signature verification failed.', err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
@@ -49,8 +50,7 @@ export default async function handler(
         const session = event.data.object as Stripe.Checkout.Session;
         const customerId = session.customer as string;
         const subscriptionId = session.subscription as string;
-
-        const customer = await stripe.customers.retrieve(customerId);
+        const customer = await stripe.customers.retrieve(customerId) as Stripe.Customer;
         const email = customer.email;
 
         // Find user by email (you could also use metadata if set)
@@ -61,7 +61,7 @@ export default async function handler(
         }
 
         const userRef = userSnap.docs[0].ref;
-        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId) as Stripe.Subscription;
         const planId = subscription.items.data[0].price.id;
 
         let tier = 'rookie';
@@ -74,26 +74,30 @@ export default async function handler(
             stripeCustomerId: customerId,
             stripeSubscriptionId: subscriptionId,
             status: 'active',
-            interval: subscription.items.data[0].price.recurring.interval,
-            currentPeriodEnd: subscription.current_period_end * 1000,
+            interval: subscription.items.data[0].price.recurring?.interval,
+            currentPeriodEnd: subscription && 'current_period_end' in subscription
+              ? new Date((subscription as any).current_period_end * 1000).getTime()
+              : null,
           },
         });
         break;
       }
-
       case 'invoice.payment_failed': {
-        const subscriptionId = event.data.object.subscription;
-        const subscription = await stripe.subscriptions.retrieve(subscriptionId as string);
-        const customerId = subscription.customer as string;
+        const invoice = event.data.object as Stripe.Invoice;
+        const subscriptionId = (invoice as any).subscription as string;
+        if (subscriptionId) {
+          const subscription = await stripe.subscriptions.retrieve(subscriptionId) as Stripe.Subscription;
+          const customerId = subscription.customer as string;
 
-        const userSnap = await db.collection('users')
-          .where('subscription.stripeCustomerId', '==', customerId)
-          .get();
+          const userSnap = await db.collection('users')
+            .where('subscription.stripeCustomerId', '==', customerId)
+            .get();
 
-        if (!userSnap.empty) {
-          await userSnap.docs[0].ref.update({
-            'subscription.status': 'past_due',
-          });
+          if (!userSnap.empty) {
+            await userSnap.docs[0].ref.update({
+              'subscription.status': 'past_due',
+            });
+          }
         }
         break;
       }

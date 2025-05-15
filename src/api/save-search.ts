@@ -1,24 +1,4 @@
-import { getFirestore } from "firebase-admin/firestore";
-import { initializeApp, cert, getApps } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
-import path from "path";
-import fs from "fs";
-
-// Initialize Firebase Admin
-const serviceAccountPath = path.join(process.cwd(), "firebase-adminsdk.json");
-
-if (!getApps().length) {
-  try {
-    const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
-    initializeApp({ credential: cert(serviceAccount) });
-    console.log("Firebase Admin initialized successfully");
-  } catch (error) {
-    console.error("Error initializing Firebase Admin:", error);
-    throw error;
-  }
-}
-
-const db = getFirestore();
+import { adminDb, adminAuth } from "../lib/firebaseAdmin";
 
 interface SearchRequest {
   playerName: string;
@@ -55,14 +35,14 @@ export async function saveSearchEndpoint(req: Request) {
 
   try {
     console.log("Verifying ID token...");
-    const decoded = await getAuth().verifyIdToken(idToken);
+    const decoded = await adminAuth.verifyIdToken(idToken);
     const uid = decoded.uid;
     console.log("Token verified for user:", uid);
 
     const searchData: SearchRequest = await req.json();
     console.log("Received search data:", searchData);
 
-    const docRef = db.collection("users").doc(uid).collection("saved_searches").doc();
+    const docRef = adminDb.collection("users").doc(uid).collection("saved_searches").doc();
     await docRef.set({
       playerName: searchData.playerName,
       year: searchData.year,

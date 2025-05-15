@@ -36,6 +36,7 @@ export interface DisplayCase extends DisplayCaseInput {
   cardIds: string[];
   likes: number;
   comments: DisplayCaseComment[];
+  visits: number;
 }
 
 export async function getUserDisplayCases() {
@@ -90,6 +91,7 @@ export async function createDisplayCase(data: DisplayCaseInput): Promise<string>
     updatedAt: serverTimestamp(),
     likes: 0,
     comments: [],
+    visits: 0,
   };
   
   const docRef = await addDoc(collection(db, 'displayCases'), newCase);

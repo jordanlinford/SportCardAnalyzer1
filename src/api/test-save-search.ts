@@ -1,5 +1,6 @@
 import { getAuth } from "firebase/auth";
 import { auth } from "../lib/firebase/config";
+import { adminDb, adminAuth } from "../lib/firebaseAdmin";
 
 async function testSaveSearch() {
   try {
@@ -50,4 +51,21 @@ async function testSaveSearch() {
 }
 
 // Run the test
-testSaveSearch(); 
+testSaveSearch();
+
+export async function testSaveSearchEndpoint(req: Request) {
+  console.log("Received test save search request");
+  
+  if (req.method !== "POST") {
+    console.log("Method not allowed:", req.method);
+    return new Response(
+      JSON.stringify({ message: "Method not allowed" }),
+      { status: 405 }
+    );
+  }
+
+  return new Response(
+    JSON.stringify({ message: "Test endpoint working" }),
+    { status: 200 }
+  );
+} 

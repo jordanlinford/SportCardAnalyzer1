@@ -1,52 +1,14 @@
-# Dependencies
 node_modules/
-/.pnp
-.pnp.js
 
-# Build output
-/dist
-/build
-/.next/
-/out/
+VITE_FIREBASE_API_KEY=AIzaSyAfb2YtBxD5YEWrNpG0J3GN_g0ZfPzsoOE
+VITE_FIREBASE_AUTH_DOMAIN=sports-card-analyzer.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=sports-card-analyzer
+VITE_FIREBASE_STORAGE_BUCKET=sports-card-analyzer.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=27312906394
+VITE_FIREBASE_APP_ID=1:27312906394:web:11296b8bb530daad5a7f23
+VITE_FIREBASE_MEASUREMENT_ID=G-YNZTKCHQT0
 
-# Environment variables
+VITE_SCRAPER_API=http://localhost:8000 server/serviceAccountKey.json
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.env.backup
-server/.env
-server/.env.backup
-
-# Firebase
-firebase-adminsdk.json
-serviceAccountKey.json
-**/serviceAccountKey.json
-
-# Testing
-/coverage
-
-# Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-*.log
-
-# IDE and editors
-.idea/
-.vscode/
-*.swp
-*.swo
-.DS_Store
-*.sublime-workspace
-
-# Cache
-.vercel
-.cache/
-.npm/
-.eslintcache
-
-# Misc
-/temp
-/tmp
+server/serviceAccountKey.json
+.env

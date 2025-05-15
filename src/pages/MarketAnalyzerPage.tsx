@@ -1299,6 +1299,99 @@ export default function MarketAnalyzerPage() {
     setIsLoadingGradedData(true);
     
     try {
+      // If using free-form search, use that as the base
+      if (searchQuery) {
+        // Get raw card price from the selected card
+        const rawListings = 'listings' in rawCard ? rawCard.listings : [];
+        const rawPrice = calculateAveragePrice(
+          rawListings.filter(l => l.price > 0).slice(0, 5) || []
+        );
+
+        // PSA 9 and PSA 10 queries
+        const psa9Params = {
+          query: searchQuery + ' PSA 9',
+          negKeywords: ['lot', 'reprint', 'digital', 'case', 'break']
+        };
+        const psa10Params = {
+          query: searchQuery + ' PSA 10',
+          negKeywords: ['lot', 'reprint', 'digital', 'case', 'break']
+        };
+
+        // Function to fetch data and handle errors (same as before)
+        const fetchGradedData = async (params: any) => {
+          try {
+            const response = await axios.post('http://localhost:3001/api/scrape', params);
+            type ScrapeResponse = {
+              success: boolean;
+              listings: ScrapedListing[];
+              count: number;
+            };
+            const data = response.data as ScrapeResponse;
+            if (data && Array.isArray(data.listings)) {
+              const listings = data.listings;
+              const validListings = listings
+                .filter((l: any) => l.price && l.price > 0)
+                .sort((a: any, b: any) => {
+                  if (a.dateSold && b.dateSold) {
+                    return new Date(b.dateSold).getTime() - new Date(a.dateSold).getTime();
+                  }
+                  return 0;
+                });
+              if (validListings.length > 0) {
+                const avgPrice = calculateAveragePrice(validListings.slice(0, 5));
+                return {
+                  averagePrice: avgPrice,
+                  listings: validListings,
+                  count: validListings.length
+                };
+              }
+            }
+            return null;
+          } catch (error) {
+            return null;
+          }
+        };
+
+        // Fetch PSA 9 and PSA 10 data in parallel
+        const [psa9Result, psa10Result] = await Promise.all([
+          fetchGradedData(psa9Params),
+          fetchGradedData(psa10Params)
+        ]);
+        setPsa9Data(psa9Result);
+        setPsa10Data(psa10Result);
+        // ... rest of the logic for profit calculation remains unchanged ...
+        // (copy from previous implementation)
+        const psa9Price = psa9Result ? psa9Result.averagePrice : (rawPrice * 2.5);
+        const psa10Price = psa10Result ? psa10Result.averagePrice : (rawPrice * 5);
+        const gradingCost = 50; // PSA grading cost
+        const totalCosts = gradingCost + 15 + 5; // grading + shipping to grader + shipping to buyer
+        const ebayFeePercent = 0.13;
+        const psa9ProfitAfterCosts = (psa9Price * (1 - ebayFeePercent)) - (rawPrice + totalCosts);
+        const psa10ProfitAfterCosts = (psa10Price * (1 - ebayFeePercent)) - (rawPrice + totalCosts);
+        const profitData = calculateGradingProfit(
+          rawPrice,
+          psa9Price,
+          psa10Price
+        );
+        const enhancedProfitData = {
+          ...profitData,
+          rawPrice: rawPrice,
+          psa9Price: psa9Price,
+          psa10Price: psa10Price,
+          psa9ProfitAfterCosts,
+          psa10ProfitAfterCosts,
+          recommendation: psa10ProfitAfterCosts > 20 ? 
+            "Grading this card appears profitable, especially if it receives a PSA 10 grade." :
+            psa9ProfitAfterCosts > 10 ?
+            "Grading may be worthwhile even with a PSA 9 grade." :
+            "Grading costs likely exceed potential profit. Consider keeping raw."
+        };
+        setGradingProfitData(enhancedProfitData);
+        console.log("Set grading profit data:", enhancedProfitData);
+        setIsLoadingGradedData(false);
+        return;
+      }
+      // ... fallback to old logic if searchQuery is not present ...
       // Only proceed if we have the necessary parameters
       if (!playerName || !cardYear || !cardSet) {
         console.error("Missing required parameters for graded search");
@@ -1539,19 +1632,36 @@ export default function MarketAnalyzerPage() {
   // Add function to handle adding card to collection
   const handleAddToCollection = async () => {
     if (!selectedCard) return;
-    
     // Make sure user is logged in
     if (!user) {
       toast.error("You need to be logged in to add cards to your collection");
       return;
     }
-    
+    // Try to auto-fill required fields
+    let name = selectedCard.playerName || playerName;
+    let year = selectedCard.year || cardYear;
+    let set = selectedCard.cardSet || cardSet;
+    // Prompt for any missing required fields
+    if (!name) {
+      name = window.prompt("Enter the player name for this card:") || "";
+    }
+    if (!year) {
+      year = window.prompt("Enter the year for this card:") || "";
+    }
+    if (!set) {
+      set = window.prompt("Enter the card set for this card:") || "";
+    }
+    // If still missing any required field, abort
+    if (!name || !year || !set) {
+      toast.error("Player name, year, and card set are required to add a card.");
+      return;
+    }
     try {
       // Create a card object from the selected card data
       const newCard = {
-        playerName: selectedCard.playerName || '',
-        year: selectedCard.year || '',
-        cardSet: selectedCard.cardSet || '',
+        playerName: name,
+        year: year,
+        cardSet: set,
         cardNumber: cardNumber || '',
         condition: selectedCard.grade || 'Raw',
         imageUrl: selectedCard.imageUrl || '',
@@ -1561,13 +1671,10 @@ export default function MarketAnalyzerPage() {
         ownerId: user.uid, // Add the ownerId field
         tags: [] // Empty tags array as default
       };
-
       // Add the card to the collection
       await addCard(newCard);
-      
       // Show a success toast
       toast.success("Card added to collection successfully!");
-      
       // Navigate to the collection page
       navigate('/collection');
     } catch (error) {
@@ -1730,7 +1837,7 @@ export default function MarketAnalyzerPage() {
 
       {/* Results Section - STEP 2: ANALYSIS */}
       {isSearched && analysisStep === 'analyze' && selectedCard && marketMetrics && (
-        <div className="space-y-6">
+        <div className="space-y-2">
           {/* Card Selection Display */}
           <Card>
             <CardHeader>
@@ -1743,8 +1850,8 @@ export default function MarketAnalyzerPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-col md:flex-row gap-6">
-                <div className="md:w-1/4">
+              <div className="flex flex-col md:flex-row gap-6 items-start">
+                <div className="md:w-1/5">
                   <div className="aspect-w-3 aspect-h-4 mb-3">
                     <CardImage 
                       src={selectedCard.imageUrl || "https://via.placeholder.com/300?text=No+Image"} 
@@ -1753,12 +1860,12 @@ export default function MarketAnalyzerPage() {
                     />
                   </div>
                 </div>
-                <div className="md:w-3/4">
+                <div className="md:w-4/5">
                   <h3 className="font-semibold text-lg mb-2">{selectedCard.title}</h3>
                   <div className="grid grid-cols-2 gap-4 mt-4">
                     <div>
                       <p className="text-sm text-gray-500">Player</p>
-                      <p className="font-medium">{selectedCard.playerName}</p>
+                      <p className="font-medium">{selectedCard.playerName || playerName}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-500">Year</p>
@@ -1766,7 +1873,7 @@ export default function MarketAnalyzerPage() {
                     </div>
                     <div>
                       <p className="text-sm text-gray-500">Set</p>
-                      <p className="font-medium">{selectedCard.cardSet}</p>
+                      <p className="font-medium">{selectedCard.cardSet || cardSet}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-500">Grade</p>
@@ -1778,7 +1885,7 @@ export default function MarketAnalyzerPage() {
                     </div>
                     <div>
                       <p className="text-sm text-gray-500">Last Sold</p>
-                      <p className="font-medium">{selectedCard.lastSold}</p>
+                      <p className="font-medium">{selectedCard.lastSold?.split('T')[0]}</p>
                     </div>
                   </div>
                   
@@ -1788,7 +1895,6 @@ export default function MarketAnalyzerPage() {
                     onClick={() => {
                       // Only change the analysis step, don't clear the data
                       setAnalysisStep('validate');
-                      
                       // Reset the selected card and analytics data
                       setSelectedCard(null);
                       setPriceData([]);

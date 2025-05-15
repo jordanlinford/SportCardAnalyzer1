@@ -14,7 +14,7 @@ import TradeAnalyzer from './pages/TradeAnalyzer';
 import SharedTradeView from './pages/SharedTradeView';
 import Home from './pages/index';
 import { ProtectedRoute } from './components/ProtectedRoute';
-import ProfilePage from './pages/profile';
+import ProfilePage from './pages/ProfilePage';
 
 const App: React.FC = () => {
   console.log('App component rendering...');
@@ -68,7 +68,7 @@ const App: React.FC = () => {
             element={<DisplayCases />} 
           />
           <Route 
-            path="/display-case/:id" 
+            path="/display-cases/:id" 
             element={<DisplayCasePage />} 
           />
           <Route 

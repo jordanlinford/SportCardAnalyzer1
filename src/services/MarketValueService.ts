@@ -1,5 +1,5 @@
 import { Card } from './CardService';
-import { doc, getDocs, updateDoc, collection } from 'firebase/firestore';
+import { doc, getDocs, updateDoc, collection, addDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 const BASE_URL = import.meta.env.VITE_SCRAPER_API;
@@ -87,9 +87,9 @@ export class MarketValueService {
           const result = await this.fetchLatestCardPrice({
             player: card.playerName,
             year: card.year,
-            set: card.brand,
+            set: card.cardSet,
             number: card.cardNumber,
-            condition: card.grade || 'ungraded',
+            condition: card.condition || 'ungraded',
           });
 
           await updateDoc(docSnap.ref, {
@@ -103,6 +103,20 @@ export class MarketValueService {
           continue;
         }
       }
+      // --- Value History Tracking ---
+      // After all updates, calculate total value and write to value_history
+      let totalValue = 0;
+      const updatedSnapshot = await getDocs(cardsRef);
+      updatedSnapshot.forEach(docSnap => {
+        const card = docSnap.data();
+        totalValue += card.currentValue || card.price || 0;
+      });
+      const valueHistoryRef = collection(db, 'users', userId, 'value_history');
+      await addDoc(valueHistoryRef, {
+        timestamp: Timestamp.now(),
+        totalValue
+      });
+      // --- End Value History Tracking ---
     } catch (error) {
       console.error('Error updating card values:', error);
       throw error;

@@ -141,12 +141,15 @@ export function AddCardModal({ isOpen, onClose, onCardAdded }: AddCardModalProps
             <label className="block text-sm font-medium text-gray-900">Condition</label>
             <Input
               {...register("condition")}
-              placeholder="Enter condition (e.g., PSA 9, Raw, etc.)"
+              placeholder="Enter grading company and grade (e.g., PSA 9, BGS 9.5) or 'Raw'"
               className="mt-1"
             />
             {errors.condition && (
               <p className="mt-1 text-sm text-red-500">{errors.condition.message}</p>
             )}
+            <p className="mt-1 text-xs text-gray-500">
+              Examples: PSA 10, BGS 9.5, SGC 9, Raw NM-MT
+            </p>
           </div>
 
           <div>
@@ -154,8 +157,18 @@ export function AddCardModal({ isOpen, onClose, onCardAdded }: AddCardModalProps
             <Input
               type="number"
               step="0.01"
-              {...register("pricePaid", { valueAsNumber: true })}
+              {...register("pricePaid", { 
+                valueAsNumber: true,
+                onChange: (e) => {
+                  // Format to 2 decimal places
+                  const value = parseFloat(e.target.value);
+                  if (!isNaN(value)) {
+                    e.target.value = value.toFixed(2);
+                  }
+                }
+              })}
               className="mt-1"
+              placeholder="0.00"
             />
           </div>
 
@@ -164,8 +177,18 @@ export function AddCardModal({ isOpen, onClose, onCardAdded }: AddCardModalProps
             <Input
               type="number"
               step="0.01"
-              {...register("currentValue", { valueAsNumber: true })}
+              {...register("currentValue", { 
+                valueAsNumber: true,
+                onChange: (e) => {
+                  // Format to 2 decimal places
+                  const value = parseFloat(e.target.value);
+                  if (!isNaN(value)) {
+                    e.target.value = value.toFixed(2);
+                  }
+                }
+              })}
               className="mt-1"
+              placeholder="0.00"
             />
           </div>
 
