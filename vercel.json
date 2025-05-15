@@ -11,20 +11,13 @@
       "config": {
         "distDir": "dist"
       }
-    },
-    {
-      "src": "server/api/*.js",
-      "use": "@vercel/node"
     }
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "server/api/$1"
-    },
-    {
       "src": "/(.*)",
-      "dest": "/index.html"
+      "dest": "/index.html",
+      "check": true
     }
   ],
   "env": {
