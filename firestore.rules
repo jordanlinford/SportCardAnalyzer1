@@ -40,6 +40,12 @@ service cloud.firestore {
         allow read: if isAuthenticated();  // Allow authenticated users to read
         allow write: if isOwner(userId);
       }
+
+      // Rules for market analyzer data
+      match /market_analyzer/{document=**} {
+        allow read: if isAuthenticated();  // Allow authenticated users to read
+        allow write: if isOwner(userId);
+      }
     }
 
     // Rules for display cases
@@ -107,6 +113,12 @@ service cloud.firestore {
       allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       // No update or delete - these are permanent records for rate limiting
+    }
+
+    // Rules for market analyzer data
+    match /market_analyzer/{document=**} {
+      allow read: if isAuthenticated();  // Allow authenticated users to read
+      allow write: if isAuthenticated();  // Allow authenticated users to write
     }
   }
 } 
