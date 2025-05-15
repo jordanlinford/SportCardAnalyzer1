@@ -864,6 +864,8 @@ app.post('/api/scrape', async (req, res) => {
   try {
     console.log("Received scrape request with body:", req.body);
     const searchParams = req.body;
+    
+    // Check if the request is empty or missing both query and playerName
     if (!searchParams || ((!searchParams.query || searchParams.query.trim() === '') && 
                          (!searchParams.playerName || searchParams.playerName.trim() === ''))) {
       console.error("Missing required parameters: either query or playerName is required");
@@ -874,6 +876,18 @@ app.post('/api/scrape', async (req, res) => {
         count: 0 
       });
     }
+
+    // Add CORS headers
+    res.setHeader('Access-Control-Allow-Origin', process.env.FRONTEND_URL || '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+
+    // Rest of your existing scrape endpoint code...
     if (searchParams.query && searchParams.query.trim() !== '') {
       console.log("Using free text query:", searchParams.query);
       const isRaw = searchParams.grade === 'Raw';
@@ -954,26 +968,13 @@ app.post('/api/scrape', async (req, res) => {
   }
 });
 
-// The server startup code with port failover mechanism
-const PORT = process.env.PORT || 3001;
-const MAX_PORT_ATTEMPTS = 10;
+// Export the Express app for Vercel serverless functions
+export default app;
 
-const startServer = async (port, attempt = 0) => {
-  try {
-    app.listen(port, () => {
-      console.log(`Server running on port ${port}`);
-    });
-  } catch (err) {
-    if (err.code === 'EADDRINUSE' && attempt < MAX_PORT_ATTEMPTS) {
-      const nextPort = port + 1;
-      console.log(`Port ${port} is already in use, trying port ${nextPort}`);
-      await startServer(nextPort, attempt + 1);
-    } else {
-      console.error('Failed to start server:', err);
-      process.exit(1);
-    }
-  }
-};
-
-// Start the server
-startServer(PORT);
+// Only start the server if we're not in a serverless environment
+if (process.env.NODE_ENV !== 'production' || process.env.VERCEL !== '1') {
+  const port = process.env.PORT || 3000;
+  app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
+  });
+}
