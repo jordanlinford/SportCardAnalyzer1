@@ -42,7 +42,7 @@ const CollectionGrid: React.FC<CollectionGridProps> = ({
           onClick={() => onEditCard(card)}
         >
           {/* Action buttons */}
-          <div className="absolute top-2 right-2 z-10 flex space-x-1">
+          <div className="absolute top-2 right-2 z-30 flex space-x-1">
             <div onClick={(e) => e.stopPropagation()}>
               <EmergencyDeleteButton
                 cardId={card.id}

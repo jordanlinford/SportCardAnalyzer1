@@ -73,7 +73,7 @@ const App: React.FC = () => {
             element={<DisplayCasePage />} 
           />
           <Route 
-            path="/display/:publicId" 
+            path="/display-case/:publicId" 
             element={<SimplePublicDisplayCase />} 
           />
           <Route 
