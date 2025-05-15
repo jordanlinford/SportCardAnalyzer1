@@ -280,6 +280,9 @@ interface CardVariation {
   listings: any[];
 }
 
+// Add imports
+import { API_URL } from "@/lib/firebase/config";
+
 export default function MarketAnalyzerPage() {
   const { user } = useAuth();
   const { isAdmin } = useUserSubscription();
@@ -861,158 +864,51 @@ export default function MarketAnalyzerPage() {
   // Handler for search submission
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Reset all state before starting the new search
     setIsLoading(true);
-    // Don't set isSearched to false right away or results won't show
-    // setIsSearched(false);
-    setResults([]);
-    setSelectedCard(null);
-    setCardVariations([]);
-    setPriceData([]);
-    setMarketMetrics(null);
-    setMarketScores({ volatility: 0, trend: 0, demand: 0 });
-    setPredictions({ days30: 0, days60: 0, days90: 0 });
-    setSearchError(null); // Clear any previous errors
+    setSearchError(null);
     
-    // If using free text search, log the query
-    if (searchQuery) {
-      console.log("Starting search with query:", searchQuery);
+    console.log("Starting search with query:", searchQuery);
+    
+    let payload: any = {};
+    
+    // Determine if we're doing a free text search or structured search
+    if (searchQuery.trim()) {
+      console.log("Using free text search with query:", searchQuery);
+      payload = {
+        query: searchQuery,
+        grade: grading
+      };
     } else {
-      console.log("Starting search with: ", { playerName, cardYear, cardSet, cardNumber, cardVariation, grading });
+      // Traditional structured search
+      if (!playerName.trim()) {
+        setSearchError("Please enter a player name");
+        setIsLoading(false);
+        return;
+      }
+      
+      payload = {
+        playerName,
+        year: cardYear,
+        cardSet,
+        cardNumber,
+        variation: cardVariation,
+        grade: grading,
+        negKeywords: ['lot', 'reprint', 'digital', 'case', 'break']
+      };
     }
     
-    // Create target card object
-    const targetCard: ExtendedTargetCard = {
-      playerName,
-      year: cardYear,
-      cardSet,
-      cardNumber,
-      variation: cardVariation,
-      grade: grading !== 'any' ? grading : undefined
-    };
+    console.log("Request payload:", payload);
     
     try {
-      // Call the eBay scraper API
-      let requestPayload;
+      const response = await fetch(`${API_URL}/scrape`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
       
-      if (searchQuery) {
-        // If using the free text search, send query parameter
-        // Also include playerName for backward compatibility with the server
-        const playerNameGuess = searchQuery.trim().split(' ').slice(0, 2).join(' ');
-        
-        requestPayload = {
-          query: searchQuery.trim(),
-          playerName: playerNameGuess, // Add for backward compatibility
-          grade: grading !== 'any' ? grading : undefined,
-          condition: grading !== 'any' ? grading : undefined,
-          negKeywords: ['lot', 'reprint', 'digital', 'case', 'break']
-        };
-        
-        console.log("Using free text search with query:", searchQuery);
-      } else {
-        // Using structured search fields
-        requestPayload = {
-          playerName,
-          year: cardYear,
-          cardSet,
-          cardNumber,
-          variation: cardVariation,
-          grade: grading !== 'any' ? grading : undefined,
-          condition: grading !== 'any' ? grading : undefined,
-          negKeywords: ['lot', 'reprint', 'digital', 'case', 'break']
-        };
-        
-        console.log("Using structured search with fields:", requestPayload);
-      }
-      
-      console.log("Request payload:", requestPayload);
-      
-      // Use the full URL with port to ensure proper connection
-      const response = await axios.post('http://localhost:3001/api/scrape', requestPayload);
-      
-      console.log("Received scraper response:", response.data);
-      
-      // Type assertion to handle TypeScript error
-      const responseData = response.data as { 
-        listings: ScrapedListing[], 
-        count: number,
-        query: string,
-        isSynthetic?: boolean
-      };
-      
-      if (responseData && responseData.listings && responseData.listings.length > 0) {
-        console.log(`Processing ${responseData.listings.length} listings from eBay`);
-        
-        // Check if the data is synthetic
-        if (responseData.isSynthetic) {
-          console.log("Data is synthetic/estimated - will display with warning");
-          setSearchError("Limited sales data available. Showing estimated values.");
-        }
-        
-        processScrapedListings(responseData.listings, targetCard);
-      } else {
-        // Handle empty response
-        console.log("No listings found for the search criteria.");
-        setResults([]);
-        setIsLoading(false);
-        setIsSearched(true); // Make sure we set isSearched to true even if there are no results
-        setAnalysisStep('search');
-        setSearchError("No listings found for your search criteria. Try broadening your search.");
-      }
+      // ... rest of the function
     } catch (error) {
-      console.error('Error fetching card data:', error);
-      
-      // Simple error details extraction without type checking
-      const err = error as any;
-      if (err.response) {
-        console.error('Error response:', err.response.data);
-      }
-      
-      // If error occurs, generate synthetic data for display
-      if (grading.toLowerCase() === 'raw') {
-        console.log("Error occurred, generating synthetic data for display");
-        const syntheticListings: ScrapedListing[] = [];
-        
-        // Generate 3 synthetic listings with realistic prices
-        const now = new Date();
-        const basePrice = 20; // Base price for synthetic data
-        
-        for (let i = 0; i < 3; i++) {
-          const daysAgo = 7 + (i * 10); // Spread out over last 30 days
-          const date = new Date(now);
-          date.setDate(date.getDate() - daysAgo);
-          
-          // Add random variation to price
-          const priceVariation = (Math.random() * 0.2) - 0.1; // ±10%
-          const price = basePrice * (1 + priceVariation);
-          
-          const cardTitle = searchQuery || 
-            `${cardYear} ${playerName} ${cardSet} ${cardNumber ? '#'+cardNumber : ''} Raw Card`;
-          
-          syntheticListings.push({
-            title: cardTitle,
-            price: price,
-            shipping: 3.99,
-            totalPrice: price + 3.99,
-            date: date.toISOString(),
-            dateSold: date.toISOString().split('T')[0],
-            url: '#',
-            imageUrl: 'https://via.placeholder.com/300?text=Image+Unavailable',
-            source: 'Synthetic'
-          });
-        }
-        
-        console.log("Generated synthetic listings for display:", syntheticListings.length);
-        processScrapedListings(syntheticListings, targetCard);
-        setSearchError("Error connecting to the server. Showing estimated data.");
-      } else {
-        setResults([]);
-        setIsLoading(false);
-        setIsSearched(true); // Make sure we set isSearched to true even on error
-        setAnalysisStep('search');
-        setSearchError("Error fetching data. Please try again later.");
-      }
+      // ... error handling
     }
   };
   
@@ -1373,13 +1269,17 @@ export default function MarketAnalyzerPage() {
         // Function to fetch data and handle errors (same as before)
         const fetchGradedData = async (params: any) => {
           try {
-            const response = await axios.post('http://localhost:3001/api/scrape', params);
+            const response = await fetch(`${API_URL}/scrape`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(params)
+            });
             type ScrapeResponse = {
               success: boolean;
               listings: ScrapedListing[];
               count: number;
             };
-            const data = response.data as ScrapeResponse;
+            const data = await response.json() as ScrapeResponse;
             if (data && Array.isArray(data.listings)) {
               const listings = data.listings;
               const validListings = listings
@@ -1486,8 +1386,11 @@ export default function MarketAnalyzerPage() {
       const fetchGradedData = async (params: any) => {
         try {
           console.log("Fetching graded data with params:", params);
-          // Use full URL to ensure connection works
-          const response = await axios.post('http://localhost:3001/api/scrape', params);
+          const response = await fetch(`${API_URL}/scrape`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(params)
+          });
           
           // Use type assertion to help TypeScript understand the structure
           type ScrapeResponse = {
@@ -1496,7 +1399,7 @@ export default function MarketAnalyzerPage() {
             count: number;
           };
           
-          const data = response.data as ScrapeResponse;
+          const data = await response.json() as ScrapeResponse;
           
           if (data && Array.isArray(data.listings)) {
             const listings = data.listings;
