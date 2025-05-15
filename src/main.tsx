@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { SubscriptionProvider } from './context/SubscriptionContext'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { HelmetProvider } from 'react-helmet-async'
 import App from './App'
 import './index.css'
 
@@ -23,7 +24,9 @@ if (!rootElement) {
         <BrowserRouter>
           <AuthProvider>
             <SubscriptionProvider>
-              <App />
+              <HelmetProvider>
+                <App />
+              </HelmetProvider>
             </SubscriptionProvider>
           </AuthProvider>
         </BrowserRouter>

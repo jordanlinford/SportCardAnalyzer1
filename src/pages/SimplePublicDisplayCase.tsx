@@ -143,6 +143,54 @@ export default function SimplePublicDisplayCase() {
         </div>
 
         <div className="bg-white rounded-xl shadow-sm p-6">
+          <h2 className="text-xl font-semibold mb-4">Cards</h2>
+          {cards.length === 0 ? (
+            <div className="text-center text-gray-400 italic mt-8">
+              No cards in this display case yet.
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-4 gap-2 sm:gap-3 md:gap-4">
+                {cards.map((card: Card) => (
+                  <div key={card.id} className="relative group cursor-pointer">
+                    {card.imageUrl ? (
+                      <>
+                        <img 
+                          src={card.imageUrl} 
+                          alt={`${card.playerName} ${card.year} ${card.cardSet}`}
+                          className="rounded-xl w-full shadow-md aspect-[2/3] object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black bg-opacity-70 opacity-0 group-hover:opacity-100 transition-all duration-200 hidden sm:flex items-center justify-center text-white text-sm rounded-xl p-2">
+                          <div className="text-center">
+                            <div className="font-semibold">{card.playerName}</div>
+                            <div className="text-xs">{card.year} {card.cardSet}</div>
+                            {card.price && (
+                              <div className="text-xs mt-1">${card.price.toLocaleString()}</div>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="rounded-xl w-full shadow-md aspect-[2/3] bg-gray-100 flex items-center justify-center">
+                        <div className="text-center p-4">
+                          <div className="font-semibold">{card.playerName}</div>
+                          <div className="text-xs text-gray-600">
+                            {card.year} {card.cardSet}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="block md:hidden text-xs text-gray-400 mt-2 text-center">
+                Tap cards to view details
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm p-6">
           <NewCommentSection displayCaseId={displayCase.id} />
         </div>
       </div>

@@ -900,7 +900,7 @@ export default function MarketAnalyzerPage() {
     console.log("Request payload:", payload);
     
     try {
-      const response = await fetch(`${API_URL}/scrape`, {
+      const response = await fetch(`${API_URL}/scrape-card`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
