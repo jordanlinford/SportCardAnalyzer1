@@ -633,7 +633,15 @@ export default function MarketAnalyzerPage() {
       { term: 'relic', label: 'Relic' },
       { term: 'negative', label: 'Negative' },
       { term: 'holo', label: 'Holo' },
-      { term: 'die cut', label: 'Die Cut' }
+      { term: 'die cut', label: 'Die Cut' },
+      { term: 'disco', label: 'Disco' },
+      { term: 'mosaic', label: 'Mosaic' },
+      { term: 'prizm', label: 'Prizm' },
+      { term: 'rookie', label: 'Rookie' },
+      { term: 'rc', label: 'Rookie' },
+      { term: 'insert', label: 'Insert' },
+      { term: 'presentations', label: 'Presentations' },
+      { term: 'debut', label: 'Debut' }
     ];
     
     // Color variations
@@ -647,50 +655,71 @@ export default function MarketAnalyzerPage() {
       { term: 'pink', label: 'Pink' },
       { term: 'purple', label: 'Purple' },
       { term: 'orange', label: 'Orange' },
-      { term: 'black', label: 'Black' }
+      { term: 'black', label: 'Black' },
+      { term: 'white', label: 'White' }
     ];
     
-    // Start with the player name
+    // Start building the comprehensive card description
     let result = '';
+    
+    // Extract player name from title if not provided
     if (playerName) {
       result = playerName;
+    } else {
+      // Try to extract player name from the title (first 2-3 words that aren't a year)
+      const words = title.split(' ');
+      const yearPattern = /^(19|20)\d{2}$/;
+      const nameWords = [];
+      
+      for (let i = 0; i < Math.min(4, words.length); i++) {
+        if (!yearPattern.test(words[i])) {
+          nameWords.push(words[i]);
+          if (nameWords.length >= 2) break;
+        }
+      }
+      
+      if (nameWords.length > 0) {
+        result = nameWords.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      }
     }
     
-    // Add year if available
+    // Add year if available or try to extract it
     if (cardYear) {
       result += ` ${cardYear}`;
+    } else {
+      // Try to extract year from title
+      const yearMatch = title.match(/(19|20)\d{2}/);
+      if (yearMatch) {
+        result += ` ${yearMatch[0]}`;
+      }
     }
     
     // Add card set if available
     if (cardSet) {
       result += ` ${cardSet}`;
+    } else {
+      // Try to extract common card set names
+      const commonSets = ['Prizm', 'Mosaic', 'Select', 'Optic', 'Donruss', 'Hoops', 'Chronicles', 'Impeccable', 'Flawless', 'Origins'];
+      for (const set of commonSets) {
+        if (title.toLowerCase().includes(set.toLowerCase())) {
+          result += ` ${set}`;
+          break;
+        }
+      }
     }
     
     // Add card number if available
     if (cardNumber) {
       result += ` #${cardNumber}`;
-    }
-    
-    // Check for grading
-    if (gradeMatch) {
-      result += ` ${gradeMatch[1].toUpperCase()} ${gradeMatch[2]}`;
     } else {
-      // If grading regex didn't match, then it's either raw or unspecified
-      // Explicitly check for raw, or infer it from the absence of grading terms
-      const isGraded = title.includes('psa') || title.includes('bgs') || 
-                       title.includes('sgc') || title.includes('cgc') || 
-                       title.includes('graded');
-      
-      if (!isGraded) {
-        if (title.includes('raw') || title.includes('ungraded')) {
-          result += ' Raw';
-        } else {
-          result += ' Raw/Ungraded';
-        }
+      // Try to find card number in the title
+      const cardNumMatch = title.match(/#(\d+)/);
+      if (cardNumMatch) {
+        result += ` #${cardNumMatch[1]}`;
       }
     }
     
-    // Check for variations
+    // Add special inserts, variations, and parallels
     let foundVariation = false;
     for (const {term, label} of variationKeywords) {
       if (title.includes(term)) {
@@ -700,14 +729,38 @@ export default function MarketAnalyzerPage() {
       }
     }
     
-    // Check for colors only if no other variation was found
-    if (!foundVariation) {
-      for (const {term, label} of colorKeywords) {
-        if (title.includes(term)) {
-          result += ` ${label}`;
-          break; // Only add the first color found
+    // Add color variations
+    let foundColor = false;
+    for (const {term, label} of colorKeywords) {
+      if (title.includes(term)) {
+        result += ` ${label}`;
+        foundColor = true;
+        break; // Only add the first color found
+      }
+    }
+    
+    // Add grading information at the end if present
+    if (gradeMatch) {
+      result += ` - ${gradeMatch[1].toUpperCase()} ${gradeMatch[2]}`;
+    } else {
+      // If grading regex didn't match, then it's either raw or unspecified
+      // Explicitly check for raw, or infer it from the absence of grading terms
+      const isGraded = title.includes('psa') || title.includes('bgs') || 
+                       title.includes('sgc') || title.includes('cgc') || 
+                       title.includes('graded');
+      
+      if (!isGraded) {
+        if (title.includes('raw') || title.includes('ungraded')) {
+          result += ' - Raw';
+        } else if (!title.includes('slab') && !title.includes('grade')) {
+          result += ' - Raw/Ungraded';
         }
       }
+    }
+    
+    // If the result is still too generic, use a limited version of the original title
+    if (result.trim().split(' ').length < 3) {
+      return limitTitleLength(listing.title, 60);
     }
     
     return result.trim();
@@ -1637,32 +1690,86 @@ export default function MarketAnalyzerPage() {
       toast.error("You need to be logged in to add cards to your collection");
       return;
     }
-    // Try to auto-fill required fields
-    let name = selectedCard.playerName || playerName;
-    let year = selectedCard.year || cardYear;
-    let set = selectedCard.cardSet || cardSet;
-    // Prompt for any missing required fields
-    if (!name) {
-      name = window.prompt("Enter the player name for this card:") || "";
+    
+    // Extract initial values from the selected card data
+    let extractedName = "";
+    let extractedYear = "";
+    let extractedSet = "";
+    let extractedCardNumber = "";
+    
+    // Try to extract information from the title
+    const cardTitle = selectedCard.title || '';
+    
+    if (selectedCard.playerName || playerName) {
+      extractedName = selectedCard.playerName || playerName || "";
+    } else if (cardTitle) {
+      // Try to extract player name from the title (usually the first 1-2 words)
+      const titleParts = cardTitle.split(' ');
+      if (titleParts.length >= 2) {
+        // Take first two words as player name if they don't look like a year
+        const firstWord = titleParts[0];
+        const secondWord = titleParts[1];
+        const yearRegex = /^(19|20)\d{2}$/;
+        
+        if (!yearRegex.test(firstWord)) {
+          extractedName = !yearRegex.test(secondWord) ? `${firstWord} ${secondWord}` : firstWord;
+        }
+      }
     }
-    if (!year) {
-      year = window.prompt("Enter the year for this card:") || "";
+    
+    if (selectedCard.year || cardYear) {
+      extractedYear = selectedCard.year || cardYear || "";
+    } else if (cardTitle) {
+      // Try to extract year from the title (4-digit number starting with 19 or 20)
+      const yearMatch = cardTitle.match(/(19|20)\d{2}/);
+      if (yearMatch) {
+        extractedYear = yearMatch[0];
+      }
     }
-    if (!set) {
-      set = window.prompt("Enter the card set for this card:") || "";
+    
+    if (selectedCard.cardSet || cardSet) {
+      extractedSet = selectedCard.cardSet || cardSet || "";
+    } else if (cardTitle) {
+      // Try to extract card set - this is trickier, but we'll look for common set names
+      const commonSets = ['Prizm', 'Select', 'Mosaic', 'Donruss', 'Optic', 'Topps', 'Chrome', 'Bowman'];
+      for (const setName of commonSets) {
+        if (cardTitle.includes(setName)) {
+          extractedSet = setName;
+          break;
+        }
+      }
     }
-    // If still missing any required field, abort
-    if (!name || !year || !set) {
-      toast.error("Player name, year, and card set are required to add a card.");
+    
+    if (cardNumber) {
+      extractedCardNumber = cardNumber;
+    } else if (cardTitle) {
+      // Try to extract card number from title
+      const numberMatch = cardTitle.match(/#(\d+)/);
+      if (numberMatch) {
+        extractedCardNumber = numberMatch[1];
+      }
+    }
+    
+    // Always prompt for all required fields to ensure accurate information
+    // Use extracted values as defaults but allow user to confirm or modify
+    const name = window.prompt("Enter the player name for this card:", extractedName) || "";
+    const year = window.prompt("Enter the year for this card:", extractedYear) || "";
+    const set = window.prompt("Enter the card set for this card:", extractedSet) || "";
+    const number = window.prompt("Enter the card number:", extractedCardNumber) || "";
+    
+    // If any required field is missing, abort
+    if (!name || !year || !set || !number) {
+      toast.error("Player name, year, card set, and card number are required to add a card.");
       return;
     }
+    
     try {
       // Create a card object from the selected card data
       const newCard = {
         playerName: name,
         year: year,
         cardSet: set,
-        cardNumber: cardNumber || '',
+        cardNumber: number,
         condition: selectedCard.grade || 'Raw',
         imageUrl: selectedCard.imageUrl || '',
         currentValue: marketMetrics?.averagePrice || 0,
@@ -1843,7 +1950,7 @@ export default function MarketAnalyzerPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <BarChart3 className="h-5 w-5" />
-                Selected Card
+                {limitTitleLength(selectedCard.title || '', 80)}
               </CardTitle>
               <CardDescription>
                 Analyzing {selectedCard.listings.length} sales for this card
@@ -1861,24 +1968,13 @@ export default function MarketAnalyzerPage() {
                   </div>
                 </div>
                 <div className="md:w-4/5">
-                  <h3 className="font-semibold text-lg mb-2">{selectedCard.title}</h3>
                   <div className="grid grid-cols-2 gap-4 mt-4">
-                    <div>
-                      <p className="text-sm text-gray-500">Player</p>
-                      <p className="font-medium">{selectedCard.playerName || playerName}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Year</p>
-                      <p className="font-medium">{selectedCard.year}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Set</p>
-                      <p className="font-medium">{selectedCard.cardSet || cardSet}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Grade</p>
-                      <p className="font-medium">{selectedCard.grade}</p>
-                    </div>
+                    {selectedCard.grade && (
+                      <div>
+                        <p className="text-sm text-gray-500">Grade</p>
+                        <p className="font-medium">{selectedCard.grade}</p>
+                      </div>
+                    )}
                     <div>
                       <p className="text-sm text-gray-500">Average Price</p>
                       <p className="font-bold text-lg">${marketMetrics.averagePrice.toFixed(2)}</p>
@@ -1886,6 +1982,10 @@ export default function MarketAnalyzerPage() {
                     <div>
                       <p className="text-sm text-gray-500">Last Sold</p>
                       <p className="font-medium">{selectedCard.lastSold?.split('T')[0]}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Sales Count</p>
+                      <p className="font-medium">{selectedCard.listings.length}</p>
                     </div>
                   </div>
                   
@@ -2201,17 +2301,24 @@ export default function MarketAnalyzerPage() {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="pricePaid">Price Paid</Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2.5">$</span>
+                    <div className="flex items-center">
+                      <span className="mr-2 text-gray-600 font-medium">$</span>
                       <Input 
                         id="pricePaid" 
-                        className="pl-7"
                         value={pricePaid} 
-                        onChange={(e) => setPricePaid(e.target.value)} 
+                        onChange={(e) => {
+                          // Only allow valid numeric input with up to 2 decimal places
+                          const value = e.target.value;
+                          // Match empty string or valid decimal number
+                          const regex = /^(\d*\.?\d{0,2})?$/;
+                          if (regex.test(value)) {
+                            setPricePaid(value);
+                          }
+                        }} 
                         placeholder="0.00"
-                        type="number"
-                        min="0"
-                        step="0.01"
+                        type="text"
+                        inputMode="decimal"
+                        aria-label="Price paid (dollars)"
                       />
                     </div>
                   </div>

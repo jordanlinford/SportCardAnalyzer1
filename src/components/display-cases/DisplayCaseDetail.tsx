@@ -1,7 +1,7 @@
 import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase/config";
-import { doc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
+import { doc, getDoc, collection, getDocs, query, where, updateDoc } from "firebase/firestore";
 import { Card } from "@/types/Card";
 import { CardGrid } from "@/components/cards/CardGrid";
 import { cn } from "@/lib/utils";
@@ -13,58 +13,6 @@ const themeStyles = {
   velvet: "bg-purple-50 border-purple-200",
   glass: "bg-blue-50 border-blue-200",
 } as const;
-
-const CardDebugger = ({ cards }: { cards: Card[] }) => {
-  const [showDebug, setShowDebug] = useState(false);
-  
-  if (cards.length === 0) return <div className="p-3 bg-red-100 text-red-700 rounded mb-4">No cards found</div>;
-  
-  return (
-    <div className="mb-4 p-3 bg-blue-50 rounded">
-      <div className="flex justify-between items-center mb-2">
-        <h3 className="font-bold">Card Data Debugger</h3>
-        <button 
-          onClick={() => setShowDebug(!showDebug)} 
-          className="px-2 py-1 bg-blue-500 text-white rounded"
-        >
-          {showDebug ? 'Hide' : 'Show'} Details
-        </button>
-      </div>
-      <div>Found {cards.length} cards</div>
-      
-      {showDebug && (
-        <div className="mt-3 space-y-3 max-h-80 overflow-auto">
-          {cards.map((card, i) => (
-            <div key={i} className="border p-3 rounded bg-white">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p><strong>ID:</strong> {card.id}</p>
-                  <p><strong>Player:</strong> {card.playerName}</p>
-                  <p><strong>Tags:</strong> {Array.isArray(card.tags) ? card.tags.join(', ') : 'No tags'}</p>
-                  <p className="break-all"><strong>Image URL:</strong> {card.imageUrl || 'MISSING'}</p>
-                </div>
-                <div>
-                  {card.imageUrl ? (
-                    <div>
-                      <p className="mb-1 text-green-600">Image Preview:</p>
-                      <img 
-                        src={card.imageUrl} 
-                        alt={card.playerName || 'Card'}
-                        className="max-h-40 border object-contain" 
-                      />
-                    </div>
-                  ) : (
-                    <div className="bg-red-50 p-2 text-red-600">No image URL available</div>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
 
 export default function DisplayCaseDetailPage() {
   const { id } = useParams();
@@ -136,6 +84,9 @@ export default function DisplayCaseDetailPage() {
         if (cardIds.length > 0) {
           console.log("Fetching specific cards by ID:", cardIds);
           
+          // Create a new array to track which card IDs were actually found
+          const foundCardIds: string[] = [];
+          
           for (const cardId of cardIds) {
             let cardDoc = null;
             
@@ -173,6 +124,28 @@ export default function DisplayCaseDetailPage() {
             
             if (cardDoc) {
               cards.push(cardDoc);
+              foundCardIds.push(cardId);
+            } else {
+              console.log(`Card with ID ${cardId} no longer exists in user's collection`);
+            }
+          }
+          
+          // If we have missing cards and this is a public display case, update the display case
+          if (foundCardIds.length < cardIds.length && displayCase.isPublic) {
+            try {
+              console.log(`Some cards are missing. Updating public display case to remove stale card IDs`);
+              const publicRef = doc(db, "public_display_cases", id!);
+              const publicSnapshot = await getDoc(publicRef);
+              
+              if (publicSnapshot.exists()) {
+                await updateDoc(publicRef, {
+                  cardIds: foundCardIds,
+                  updatedAt: new Date()
+                });
+                console.log(`Updated public display case ${id} to remove missing cards`);
+              }
+            } catch (error) {
+              console.error(`Error updating public display case ${id}:`, error);
             }
           }
         } 
@@ -298,7 +271,6 @@ export default function DisplayCaseDetailPage() {
         </div>
 
         <div className="bg-white rounded-lg shadow-sm p-6">
-          <CardDebugger cards={cards} />
           {/* Render actual card images instead of just IDs */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {cards.length > 0 ? (

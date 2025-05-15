@@ -39,22 +39,119 @@ const db = admin.firestore();
 
 // 1) Create Checkout Session
 app.post('/api/create-checkout-session', async (req, res) => {
-  const { priceId, userId } = req.body;
+  const { priceId, userId, planName, interval } = req.body;
+
+  if (!priceId) {
+    return res.status(400).json({ error: 'Missing price ID', message: 'No price ID provided in request' });
+  }
+
+  if (!userId) {
+    return res.status(400).json({ error: 'Missing user ID', message: 'No user ID provided in request' });
+  }
 
   try {
+    // Define the correct price IDs for your environment
+    const mapPriceId = (originalId) => {
+      // List of known valid Stripe price IDs for direct pass-through
+      const knownValidPriceIds = [
+        'price_1RN5t3GCix0pRkbmBX32A7AG',  // Rookie Plan
+        'price_1RDB4fGCix0pRkbmlNdsyo7s',  // Star Plan Monthly
+        'price_1RN5uOGCix0pRkbmK2kCjqw4',  // Star Plan Annual
+        'price_1RDB4fGCix0pRkbmmPrBX8FE',  // Veteran Plan Monthly
+        'price_1RN5vwGCix0pRkbmT65EllS1'   // Veteran Plan Annual
+      ];
+      
+      // If it's a known Stripe price ID, use it directly
+      if (knownValidPriceIds.includes(originalId)) {
+        console.log(`Using known valid price ID: ${originalId}`);
+        return originalId;
+      }
+      
+      // If the submitted ID starts with 'price_1', it's probably a Stripe price ID
+      if (originalId && originalId.startsWith('price_1')) {
+        console.log(`Using ID that appears to be a Stripe price ID: ${originalId}`);
+        return originalId;
+      }
+      
+      // Otherwise, try to map it to a known price ID
+      const priceMap = {
+        // Map generic price IDs to your actual Stripe price IDs
+        'price_star_monthly': 'price_1RDB4fGCix0pRkbmlNdsyo7s',
+        'price_star_annual': 'price_1RN5uOGCix0pRkbmK2kCjqw4',
+        'price_veteran_monthly': 'price_1RDB4fGCix0pRkbmmPrBX8FE',
+        'price_veteran_annual': 'price_1RN5vwGCix0pRkbmT65EllS1',
+        'rookie_plan': 'price_1RN5t3GCix0pRkbmBX32A7AG',
+        'free': 'price_1RN5t3GCix0pRkbmBX32A7AG'
+      };
+      
+      const mappedId = priceMap[originalId];
+      
+      if (!mappedId) {
+        console.error(`No mapping found for price ID: ${originalId}`);
+        throw new Error(`Invalid price ID: ${originalId}. No mapping found.`);
+      }
+      
+      console.log(`Mapped price ID: ${originalId} → ${mappedId}`);
+      return mappedId;
+    };
+
+    // Get the mapped price ID for Stripe
+    let finalPriceId;
+    try {
+      finalPriceId = mapPriceId(priceId);
+      console.log(`Using Stripe price ID: ${finalPriceId}`);
+    } catch (error) {
+      return res.status(400).json({ 
+        error: 'Invalid price ID', 
+        message: error.message,
+        validOptions: {
+          'price_star_monthly': 'Star Plan (Monthly)',
+          'price_star_annual': 'Star Plan (Annual)',
+          'price_veteran_monthly': 'Veteran Plan (Monthly)',
+          'price_veteran_annual': 'Veteran Plan (Annual)',
+          'rookie_plan': 'Rookie Plan (Free)'
+        }
+      });
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: [{ price: finalPriceId, quantity: 1 }],
       success_url: process.env.FRONTEND_URL + '/profile?session_id={CHECKOUT_SESSION_ID}',
       cancel_url: process.env.FRONTEND_URL + '/profile',
-      metadata: { userId },
+      metadata: { 
+        userId,
+        planName: planName || 'Unknown plan', 
+        interval: interval || 'monthly' 
+      },
     });
 
     res.json({ url: session.url });
   } catch (err) {
     console.error('Error creating checkout session:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', message: err.message });
+  }
+});
+
+// Health check endpoint
+app.get('/api/health-check', async (req, res) => {
+  try {
+    // Check if Stripe is working
+    const stripeStatus = await stripe.balance.retrieve();
+    res.json({ 
+      status: 'healthy', 
+      stripe: stripeStatus ? 'connected' : 'error',
+      environment: process.env.NODE_ENV || 'development',
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Health check error:', err);
+    res.status(500).json({ 
+      status: 'unhealthy', 
+      error: err.message,
+      timestamp: new Date().toISOString()
+    });
   }
 });
 
@@ -128,6 +225,25 @@ app.post('/api/webhook', bodyParser.raw({ type: 'application/json' }), async (re
             currentPeriodEnd: subscription.current_period_end,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
           });
+          
+          // Also update the main user document with subscription tier info
+          let tierName = 'rookie'; // Default tier
+          
+          // Determine tier name from price ID
+          if (priceId === 'price_1RDB4fGCix0pRkbmlNdsyo7s' || priceId === 'price_1RN5uOGCix0pRkbmK2kCjqw4') {
+            tierName = 'star';
+          } else if (priceId === 'price_1RDB4fGCix0pRkbmmPrBX8FE' || priceId === 'price_1RN5vwGCix0pRkbmT65EllS1') {
+            tierName = 'veteran';
+          }
+          
+          // Update the main user document
+          await db.collection('users').doc(userId).update({
+            subscriptionTier: tierName,
+            subscriptionPriceId: priceId,
+            subscriptionUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          
+          console.log(`Updated user ${userId} subscription tier to ${tierName}`);
         }
         break;
       }
@@ -142,6 +258,15 @@ app.post('/api/webhook', bodyParser.raw({ type: 'application/json' }), async (re
             status: 'canceled',
             canceledAt: admin.firestore.FieldValue.serverTimestamp(),
           }, { merge: true });
+          
+          // Reset the main user document subscription tier to 'rookie'
+          await db.collection('users').doc(userId).update({
+            subscriptionTier: 'rookie',
+            subscriptionStatus: 'canceled',
+            subscriptionUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          
+          console.log(`Reset user ${userId} subscription tier to rookie (canceled)`);
         }
         break;
       }
@@ -797,6 +922,41 @@ app.post('/api/scrape', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log('Server running on port ' + PORT);
-});
+
+// Check if port is already in use and try alternate ports if needed
+const tryListen = (port, maxAttempts = 3) => {
+  let currentPort = port;
+  let attempts = 0;
+  
+  const startServer = () => {
+    try {
+      const server = app.listen(currentPort, () => {
+        console.log(`Server running on port ${currentPort}`);
+      });
+      
+      server.on('error', (e) => {
+        if (e.code === 'EADDRINUSE' && attempts < maxAttempts) {
+          console.log(`Port ${currentPort} is already in use, trying port ${currentPort + 1}`);
+          currentPort++;
+          attempts++;
+          server.close();
+          startServer();
+        } else {
+          console.error(`Error starting server:`, e);
+        }
+      });
+    } catch (error) {
+      console.error(`Failed to start server:`, error);
+      if (attempts < maxAttempts) {
+        console.log(`Trying port ${currentPort + 1}...`);
+        currentPort++;
+        attempts++;
+        startServer();
+      }
+    }
+  };
+  
+  startServer();
+};
+
+tryListen(PORT);

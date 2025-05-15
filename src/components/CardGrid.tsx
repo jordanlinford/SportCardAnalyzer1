@@ -34,7 +34,7 @@ export default function CardGrid({ cards, onCardClick }: CardGridProps) {
           )}
           {card.currentValue && (
             <div className="absolute bottom-0 right-0 bg-black/70 text-white text-xs px-1.5 py-0.5 m-1 rounded">
-              ${card.currentValue}
+              ${card.currentValue.toFixed(2)}
             </div>
           )}
         </div>

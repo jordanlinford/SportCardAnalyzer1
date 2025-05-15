@@ -4,6 +4,9 @@ import * as cheerio from 'cheerio';
 
 dotenv.config();
 
+// Configure max timeout for eBay requests
+const FETCH_TIMEOUT = 30000; // 30 seconds
+
 // Simplified version of the scraper function for serverless
 async function fetchWithRetry(url, options = {}, maxRetries = 3) {
   console.log(`Attempting to fetch URL: ${url}`);
@@ -20,16 +23,20 @@ async function fetchWithRetry(url, options = {}, maxRetries = 3) {
           'Connection': 'keep-alive',
           'Cache-Control': 'max-age=0',
         },
-        timeout: 30000,
+        timeout: FETCH_TIMEOUT,
         ...options
       });
       if (response.status === 200) {
         console.log(`Successfully fetched URL on attempt ${attempt + 1}`);
         return response;
+      } else {
+        console.log(`Received status ${response.status} on attempt ${attempt + 1}`);
       }
     } catch (error) {
       console.error(`Error on attempt ${attempt + 1}:`, error.message);
-      if (attempt === maxRetries - 1) throw error;
+      if (attempt === maxRetries - 1) {
+        throw error;
+      }
     }
   }
   throw new Error(`Failed to fetch URL after ${maxRetries} attempts`);
@@ -58,68 +65,163 @@ function extractSrcset(srcset) {
   }
 }
 
-function extractListingData($, element) {
-  try {
-    const titleElement = $(element).find('div.s-item__title span');
-    const title = titleElement.text().trim();
-    if (title.toLowerCase().includes('shop on ebay')) {
-      return null;
-    }
-    
-    const priceStr = $(element).find('.s-item__price').text().trim();
-    const price = parseFloat(priceStr.replace(/[^0-9.]/g, ''));
-    
-    const shippingStr = $(element).find('.s-item__shipping, .s-item__freeXDays').text().trim();
-    let shipping = 0;
-    if (shippingStr && !shippingStr.toLowerCase().includes('free')) {
-      shipping = parseFloat(shippingStr.replace(/[^0-9.]/g, '')) || 0;
-    }
-    
-    const totalPrice = price + shipping;
-    const date = new Date();
-    const dateSold = date.toISOString().split('T')[0];
-    
-    // Extract image
-    let imageUrl = '';
-    const imageContainer = $(element).find('.s-item__image-wrapper');
-    if (imageContainer.length > 0) {
-      const imageElement = imageContainer.find('img');
-      if (imageElement.length > 0) {
-        imageUrl = extractBestImageUrl(imageElement);
-      }
-    }
-    
-    // Improve image URL
-    if (imageUrl) {
-      imageUrl = imageUrl
-        .replace('s-l64', 's-l500')
-        .replace('s-l96', 's-l500')
-        .replace('s-l140', 's-l500')
-        .replace('s-l225', 's-l500')
-        .replace('s-l300', 's-l500');
-      
-      if (imageUrl.startsWith('//')) {
-        imageUrl = 'https:' + imageUrl;
-      }
-    }
-    
-    const link = $(element).find('.s-item__link').attr('href') || '';
-    
-    return {
-      title,
-      price,
-      shipping,
-      totalPrice,
-      date: date.toISOString(),
-      dateSold,
-      imageUrl,
-      link,
-      status: 'Sold'
-    };
-  } catch (err) {
-    console.error("Error extracting listing data:", err.message);
+function extractListingData($, element, isRaw = false) {
+  const titleElement = $(element).find('div.s-item__title span');
+  const title = titleElement.text().trim();
+  if (title.toLowerCase().includes('shop on ebay')) {
+    console.log("Skipping 'Shop on eBay' listing");
     return null;
   }
+  const priceStr = $(element).find('.s-item__price').text().trim();
+  const price = parseFloat(priceStr.replace(/[^0-9.]/g, ''));
+  const shippingStr = $(element).find('.s-item__shipping, .s-item__freeXDays').text().trim();
+  let shipping = 0;
+  if (shippingStr && !shippingStr.toLowerCase().includes('free')) {
+    shipping = parseFloat(shippingStr.replace(/[^0-9.]/g, '')) || 0;
+  }
+  const totalPrice = price + shipping;
+  
+  // Extract date
+  const dateSelectors = [
+    '.s-item__listingDate',
+    '.s-item__endedDate',
+    '.s-item__soldDate',
+    '.s-item__time-left'
+  ];
+  let dateStr = null;
+  for (const selector of dateSelectors) {
+    const dateElement = $(element).find(selector);
+    if (dateElement.length > 0) {
+      dateStr = dateElement.text().trim();
+      break;
+    }
+  }
+  if (!dateStr) {
+    $(element).find('span, div').each((i, elem) => {
+      const text = $(elem).text().trim();
+      if (text.includes('Sold') || text.includes('Ended')) {
+        dateStr = text;
+        return false;
+      }
+    });
+  }
+  
+  // Process the date
+  let date = new Date();
+  if (dateStr) {
+    try {
+      dateStr = dateStr.replace(/^(Sold|Ended)\s+/i, '').trim();
+      if (dateStr.includes('d ago')) {
+        const days = parseInt(dateStr);
+        if (!isNaN(days)) {
+          date = new Date();
+          date.setDate(date.getDate() - days);
+        }
+      } else if (dateStr.includes('h ago')) {
+        const hours = parseInt(dateStr);
+        if (!isNaN(hours)) {
+          date = new Date();
+          date.setHours(date.getHours() - hours);
+        }
+      } else {
+        const parsedDate = new Date(dateStr);
+        if (!isNaN(parsedDate.getTime())) {
+          date = parsedDate;
+        }
+      }
+    } catch (e) {
+      console.log("Error parsing date:", e);
+    }
+  }
+  
+  // Extract image
+  let imageUrl = '';
+  const imageContainer = $(element).find('.s-item__image, .s-item__image-wrapper, .s-item__image-section');
+  if (imageContainer.length > 0) {
+    const imageElement = imageContainer.find('img');
+    if (imageElement.length > 0) {
+      imageUrl = extractBestImageUrl(imageElement);
+    }
+  }
+  
+  // If still no image, try different selectors
+  if (!imageUrl || imageUrl.includes('data:image') || imageUrl.includes('.gif')) {
+    const directImageSelectors = [
+      'img.s-item__image-img',
+      'img.s-item__image',
+      'img.s-item__image--img',
+      'img.s-item__image-img--img'
+    ];
+    for (const selector of directImageSelectors) {
+      const imageElement = $(element).find(selector);
+      if (imageElement.length > 0) {
+        const extractedUrl = extractBestImageUrl(imageElement);
+        if (extractedUrl && !extractedUrl.includes('data:image') && !extractedUrl.includes('.gif')) {
+          imageUrl = extractedUrl;
+          break;
+        }
+      }
+    }
+  }
+  
+  // Last resort image extraction
+  if (!imageUrl || imageUrl.includes('data:image') || imageUrl.includes('.gif')) {
+    const anyImage = $(element).find('img').first();
+    if (anyImage.length > 0) {
+      imageUrl = extractBestImageUrl(anyImage);
+    }
+  }
+  
+  // Process the image URL
+  if (imageUrl) {
+    imageUrl = imageUrl
+      .replace('s-l64', 's-l500')
+      .replace('s-l96', 's-l500')
+      .replace('s-l140', 's-l500')
+      .replace('s-l225', 's-l500')
+      .replace('s-l300', 's-l500');
+    if (imageUrl.startsWith('//')) {
+      imageUrl = 'https:' + imageUrl;
+    } else if (imageUrl.startsWith('/')) {
+      imageUrl = 'https://www.ebay.com' + imageUrl;
+    }
+    if (imageUrl.includes('?')) {
+      imageUrl = imageUrl.split('?')[0];
+    }
+    if (imageUrl.toLowerCase().includes('placeholder') || 
+        imageUrl.toLowerCase().includes('no-image')) {
+      imageUrl = '';
+    }
+  }
+  
+  // Get link
+  const link = $(element).find('.s-item__link').attr('href') || '';
+  
+  // Determine status
+  const itemInfoElements = $(element).find('.s-item__caption-section');
+  let status = '';
+  itemInfoElements.each((index, infoElem) => {
+    const text = $(infoElem).text().trim().toLowerCase();
+    if (text.includes('sold') || text.includes('ended')) {
+      status = 'Sold';
+    }
+  });
+  
+  const dateSold = date.toISOString().split('T')[0];
+  
+  return {
+    title,
+    price,
+    shipping,
+    totalPrice,
+    date: date.toISOString(),
+    dateSold,
+    imageUrl,
+    url: link,
+    source: 'eBay',
+    status: status || 'Sold',
+    isRaw: isRaw
+  };
 }
 
 async function scrapeEbay(url) {
@@ -176,48 +278,97 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
   
-  const { 
-    playerName, 
-    year, 
-    cardSet, 
-    cardNumber, 
-    variation, 
-    condition, 
-    negKeywords 
-  } = req.body;
+  const { query, grade = 'any', isRaw = false } = req.body;
   
-  if (!playerName) {
-    return res.status(400).json({ error: 'Player name is required' });
+  if (!query) {
+    return res.status(400).json({ error: 'Missing query parameter' });
   }
   
   try {
-    // Build the search query
-    let baseQuery = playerName;
-    if (year) baseQuery += ' ' + year;
-    if (cardSet) baseQuery += ' ' + cardSet;
-    if (cardNumber) baseQuery += ' ' + cardNumber;
-    if (variation) baseQuery += ' ' + variation;
-    if (condition) baseQuery += ' ' + condition;
+    // For simplicity, we'll scrape eBay completed listings
+    const listings = await scrapeEbayWithQuery(query, isRaw);
     
-    // Add negative keywords
-    const negQuery = (negKeywords || ['lot', 'reprint']).map(kw => `-${kw}`).join(' ');
-    const searchQuery = `${baseQuery} ${negQuery}`;
+    // Filter by grade if specified
+    let filteredListings = listings;
+    if (grade && grade !== 'any') {
+      filteredListings = listings.filter(listing => {
+        const title = listing.title.toLowerCase();
+        // Different grade matching patterns based on the grading company
+        if (grade.startsWith('PSA')) {
+          return title.includes('psa') && title.includes(grade.split(' ')[1]);
+        } else if (grade.startsWith('BGS')) {
+          return title.includes('bgs') && title.includes(grade.split(' ')[1]);
+        } else if (grade.startsWith('SGC')) {
+          return title.includes('sgc') && title.includes(grade.split(' ')[1]);
+        } else if (grade === 'raw') {
+          // For raw cards, exclude graded cards
+          return !title.includes('psa') && !title.includes('bgs') && 
+                 !title.includes('sgc') && !title.includes('graded');
+        }
+        return true;
+      });
+    }
     
-    // Create the eBay URL
-    const encodedQuery = encodeURIComponent(searchQuery);
-    const ebayUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodedQuery}&_sacat=212&LH_Complete=1&LH_Sold=1&_sop=13&_ipg=240`;
-    
-    console.log("Searching eBay with URL:", ebayUrl);
-    const results = await scrapeEbay(ebayUrl);
-    
-    // Return the results
-    res.status(200).json({
-      listings: results,
-      count: results.length,
-      query: ebayUrl
+    return res.status(200).json({ 
+      success: true, 
+      listings: filteredListings,
+      count: filteredListings.length,
+      originalQuery: query,
+      grade
     });
   } catch (error) {
-    console.error("Error handling request:", error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error scraping eBay:', error);
+    return res.status(500).json({ 
+      error: 'Error scraping data',
+      message: error.message,
+      query
+    });
+  }
+}
+
+async function scrapeEbayWithQuery(searchQuery, isRaw = false) {
+  // Create a URL-friendly search query
+  const encodedQuery = encodeURIComponent(searchQuery);
+  
+  // Construct the eBay completed listings URL
+  const url = `https://www.ebay.com/sch/i.html?_nkw=${encodedQuery}&_sacat=0&LH_Complete=1&LH_Sold=1&rt=nc&_udlo=0.01`;
+  
+  try {
+    const listings = await scrapeEbay(url, isRaw);
+    console.log(`Query "${searchQuery}": found ${listings.length} listings`);
+    return listings;
+  } catch (error) {
+    console.error(`Error scraping listings for query "${searchQuery}":`, error);
+    throw error;
+  }
+}
+
+async function scrapeEbay(url, isRaw = false) {
+  console.log("Scraping URL:", url);
+  try {
+    const response = await fetchWithRetry(url);
+    const html = response.data;
+    const $ = cheerio.load(html);
+    
+    const listings = [];
+    
+    // Select all listing items
+    $('.s-item__wrapper').each((index, element) => {
+      try {
+        const listingData = extractListingData($, element, isRaw);
+        if (listingData) {
+          console.log(`Added item: ${listingData.title} - $${listingData.totalPrice} - ${listingData.imageUrl}`);
+          listings.push(listingData);
+        }
+      } catch (e) {
+        console.error('Error processing listing:', e);
+      }
+    });
+    
+    console.log(`Successfully scraped ${listings.length} listings`);
+    return listings;
+  } catch (error) {
+    console.error('Error scraping eBay:', error);
+    throw error;
   }
 } 

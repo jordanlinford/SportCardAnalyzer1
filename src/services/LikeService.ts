@@ -32,7 +32,7 @@ export class LikeService {
       await addDoc(likesCollection, {
         displayCaseId,
         userId,
-        createdAt: serverTimestamp()
+        timestamp: serverTimestamp()
       });
       console.log("Like added successfully");
       

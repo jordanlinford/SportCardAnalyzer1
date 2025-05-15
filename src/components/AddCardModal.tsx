@@ -101,24 +101,36 @@ export function AddCardModal({ isOpen, onClose, onCardAdded }: AddCardModalProps
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-900">Player Name</label>
-            <Input {...register("playerName")} className="mt-1" />
+            <label className="block text-sm font-medium text-gray-900">Player Name *</label>
+            <Input 
+              {...register("playerName")} 
+              className="mt-1" 
+              placeholder="Enter player name (e.g., LeBron James)"
+            />
             {errors.playerName && (
               <p className="mt-1 text-sm text-red-500">{errors.playerName.message}</p>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-900">Year</label>
-            <Input {...register("year")} className="mt-1" />
+            <label className="block text-sm font-medium text-gray-900">Year *</label>
+            <Input 
+              {...register("year")} 
+              className="mt-1" 
+              placeholder="Enter card year (e.g., 2023)"
+            />
             {errors.year && (
               <p className="mt-1 text-sm text-red-500">{errors.year.message}</p>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-900">Card Set</label>
-            <Input {...register("cardSet")} className="mt-1" />
+            <label className="block text-sm font-medium text-gray-900">Card Set *</label>
+            <Input 
+              {...register("cardSet")} 
+              className="mt-1" 
+              placeholder="Enter card set (e.g., Prizm, Topps Chrome)"
+            />
             {errors.cardSet && (
               <p className="mt-1 text-sm text-red-500">{errors.cardSet.message}</p>
             )}
@@ -126,19 +138,27 @@ export function AddCardModal({ isOpen, onClose, onCardAdded }: AddCardModalProps
 
           <div>
             <label className="block text-sm font-medium text-gray-900">Variation (Optional)</label>
-            <Input {...register("variation")} className="mt-1" />
+            <Input 
+              {...register("variation")} 
+              className="mt-1" 
+              placeholder="Enter card variation (e.g., Silver, Refractor)"
+            />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-900">Card Number</label>
-            <Input {...register("cardNumber")} className="mt-1" />
+            <label className="block text-sm font-medium text-gray-900">Card Number *</label>
+            <Input 
+              {...register("cardNumber")} 
+              className="mt-1" 
+              placeholder="Enter card number (e.g., #23, 123)"
+            />
             {errors.cardNumber && (
               <p className="mt-1 text-sm text-red-500">{errors.cardNumber.message}</p>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-900">Condition</label>
+            <label className="block text-sm font-medium text-gray-900">Condition *</label>
             <Input
               {...register("condition")}
               placeholder="Enter grading company and grade (e.g., PSA 9, BGS 9.5) or 'Raw'"
@@ -221,19 +241,22 @@ export function AddCardModal({ isOpen, onClose, onCardAdded }: AddCardModalProps
             />
           </div>
 
-          <div className="flex justify-end gap-4 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              disabled={isLoading}
-              className="text-gray-900"
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isLoading}>
-              {isLoading ? "Adding..." : "Add Card"}
-            </Button>
+          <div className="flex justify-between pt-4">
+            <div className="text-sm text-gray-500">* Required fields</div>
+            <div className="flex gap-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                disabled={isLoading}
+                className="text-gray-900"
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isLoading}>
+                {isLoading ? "Adding..." : "Add Card"}
+              </Button>
+            </div>
           </div>
         </form>
       </DialogContent>

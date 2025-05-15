@@ -77,7 +77,7 @@ export const EditCardModal = ({ card, isOpen, onClose, onCardUpdated, onCardDele
       
       const tagsChanged = JSON.stringify(card.tags) !== JSON.stringify(parsedTags);
       
-      if (parsedTags.length > 0 && tagsChanged) {
+      if (tagsChanged) {
         try {
           console.log("Syncing updated card with display cases...");
           const syncResult = await syncCardWithDisplayCases(
@@ -86,17 +86,22 @@ export const EditCardModal = ({ card, isOpen, onClose, onCardUpdated, onCardDele
           );
           
           if (syncResult.syncedCount > 0) {
-            toast.success(`Card was added to ${syncResult.syncedCount} display case(s) with matching tags`);
+            toast.success(`Card was updated in ${syncResult.syncedCount} display case(s) based on tag changes`);
           }
-          
-          queryClient.invalidateQueries({ queryKey: ["displayCases", user.uid] });
           
         } catch (syncError) {
           console.error("Error syncing card with display cases:", syncError);
+          toast.error("Error syncing card with display cases. Try refreshing the page.");
         }
       }
       
-      queryClient.invalidateQueries({ queryKey: ["cards", user.uid] });
+      // Always invalidate both queries regardless of whether tags changed
+      queryClient.invalidateQueries({ queryKey: ["cards", user?.uid] });
+      queryClient.invalidateQueries({ queryKey: ["displayCases", user?.uid] });
+      queryClient.invalidateQueries({ queryKey: ["displayCasesWithCards", user?.uid] });
+      
+      // Add a slight delay to ensure Firebase has updated the data
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       onCardUpdated();
       onClose();

@@ -8,14 +8,9 @@ export async function syncCardWithDisplayCases(
   userId: string
 ): Promise<{ syncedCount: number; displayCases: string[] }> {
   try {
-    if (!card.tags || card.tags.length === 0) {
-      console.log("syncCardWithDisplayCases: Card has no tags, skipping sync");
-      return { syncedCount: 0, displayCases: [] };
-    }
-
-    console.log("syncCardWithDisplayCases: Syncing card with display cases for tags:", card.tags);
+    console.log("syncCardWithDisplayCases: Syncing card with display cases for user:", userId);
     
-    // Get all display cases that match the card's tags
+    // Get all display cases for the user
     const displayCaseRef = collection(db, "users", userId, "display_cases");
     const displayCaseSnap = await getDocs(displayCaseRef);
     
@@ -25,46 +20,64 @@ export async function syncCardWithDisplayCases(
     // Check each display case
     for (const dcDoc of displayCaseSnap.docs) {
       const displayCase = dcDoc.data();
+      const displayCaseId = dcDoc.id;
       
       // Skip if display case has no tags
       if (!displayCase.tags || !Array.isArray(displayCase.tags) || displayCase.tags.length === 0) {
+        console.log(`syncCardWithDisplayCases: Display case ${displayCaseId} has no tags, skipping`);
         continue;
       }
       
-      // Check if any of the card's tags match the display case tags
-      const hasMatchingTag = card.tags.some(tag => displayCase.tags.includes(tag));
+      // Get current cardIds array or initialize it
+      const cardIds = Array.isArray(displayCase.cardIds) ? [...displayCase.cardIds] : [];
       
-      if (hasMatchingTag) {
-        console.log(`syncCardWithDisplayCases: Found matching display case: ${dcDoc.id}`);
-        
-        // Get current cardIds array or initialize it
-        const cardIds = Array.isArray(displayCase.cardIds) ? [...displayCase.cardIds] : [];
-        
-        // Skip if the card is already in the display case
-        if (cardIds.includes(card.id)) {
-          console.log(`syncCardWithDisplayCases: Card ${card.id} already exists in display case ${dcDoc.id}`);
-          continue;
-        }
-        
-        // Add the card to the display case
+      // Check if the card is already in the display case
+      const cardInDisplayCase = cardIds.includes(card.id);
+      
+      // Check if any of the card's tags match the display case tags
+      const hasMatchingTag = card.tags && card.tags.length > 0 && 
+                            card.tags.some((tag: string) => displayCase.tags.includes(tag));
+      
+      // Determine if we need to make changes
+      let needsUpdate = false;
+      
+      if (hasMatchingTag && !cardInDisplayCase) {
+        // Card has matching tags but is not in the display case - add it
+        console.log(`syncCardWithDisplayCases: Adding card ${card.id} to display case ${displayCaseId}`);
         cardIds.push(card.id);
-        
+        needsUpdate = true;
+        syncCount++;
+        updatedDisplayCases.push(displayCaseId);
+      } else if (!hasMatchingTag && cardInDisplayCase) {
+        // Card is in the display case but no longer has matching tags - remove it
+        console.log(`syncCardWithDisplayCases: Removing card ${card.id} from display case ${displayCaseId}`);
+        const updatedCardIds = cardIds.filter(id => id !== card.id);
+        if (updatedCardIds.length !== cardIds.length) {
+          cardIds.length = 0; // Clear the array
+          cardIds.push(...updatedCardIds); // Add the filtered items
+          needsUpdate = true;
+          syncCount++;
+          updatedDisplayCases.push(displayCaseId);
+        }
+      } else {
+        console.log(`syncCardWithDisplayCases: No changes needed for display case ${displayCaseId}`);
+      }
+      
+      // If we need to update the display case, do so
+      if (needsUpdate) {
         // Update the display case
-        const dcRef = doc(db, "users", userId, "display_cases", dcDoc.id);
+        const dcRef = doc(db, "users", userId, "display_cases", displayCaseId);
         await updateDoc(dcRef, {
           cardIds,
           updatedAt: new Date()
         });
         
-        syncCount++;
-        updatedDisplayCases.push(dcDoc.id);
-        
-        console.log(`syncCardWithDisplayCases: Added card ${card.id} to display case ${dcDoc.id}`);
+        console.log(`syncCardWithDisplayCases: Updated display case ${displayCaseId}`);
         
         // Also update the public version if it exists
         try {
           if (displayCase.isPublic) {
-            const publicRef = doc(db, "public_display_cases", dcDoc.id);
+            const publicRef = doc(db, "public_display_cases", displayCaseId);
             const publicSnap = await getDoc(publicRef);
             
             if (publicSnap.exists()) {
@@ -72,11 +85,11 @@ export async function syncCardWithDisplayCases(
                 cardIds,
                 updatedAt: new Date()
               });
-              console.log(`syncCardWithDisplayCases: Updated public display case ${dcDoc.id}`);
+              console.log(`syncCardWithDisplayCases: Updated public display case ${displayCaseId}`);
             }
           }
         } catch (error) {
-          console.error(`syncCardWithDisplayCases: Error updating public display case ${dcDoc.id}:`, error);
+          console.error(`syncCardWithDisplayCases: Error updating public display case ${displayCaseId}:`, error);
           // Continue with other display cases even if one fails
         }
       }

@@ -29,44 +29,67 @@ export default function DisplayCaseCard({ displayCase }: DisplayCaseCardProps) {
       
       const fetchCards = async () => {
         try {
-          const promises = displayCase.cardIds!.map(async (cardId) => {
+          // Keep track of which card IDs were successfully found
+          const foundCards: Card[] = [];
+          
+          for (const cardId of displayCase.cardIds!) {
+            let cardFound = false;
+            
             // Try both possible collection paths
             try {
               const cardDoc = await getDoc(doc(db, "users", displayCase.userId, "collection", cardId));
               if (cardDoc.exists()) {
-                return { id: cardDoc.id, ...cardDoc.data() } as Card;
+                foundCards.push({ 
+                  id: cardDoc.id, 
+                  ...cardDoc.data(),
+                  tags: cardDoc.data().tags || [] 
+                } as Card);
+                cardFound = true;
               }
             } catch (err) {
-              console.error(`Error fetching card ${cardId} from collection:`, err);
+              // Silent error handling
             }
             
-            try {
-              const cardDoc = await getDoc(doc(db, "users", displayCase.userId, "cards", cardId));
-              if (cardDoc.exists()) {
-                return { id: cardDoc.id, ...cardDoc.data() } as Card;
+            if (!cardFound) {
+              try {
+                const cardDoc = await getDoc(doc(db, "users", displayCase.userId, "cards", cardId));
+                if (cardDoc.exists()) {
+                  foundCards.push({ 
+                    id: cardDoc.id, 
+                    ...cardDoc.data(),
+                    tags: cardDoc.data().tags || [] 
+                  } as Card);
+                  cardFound = true;
+                }
+              } catch (err) {
+                // Silent error handling
               }
-            } catch (err) {
-              console.error(`Error fetching card ${cardId} from cards:`, err);
             }
             
-            // Try global cards collection as fallback
-            try {
-              const cardDoc = await getDoc(doc(db, "cards", cardId));
-              if (cardDoc.exists()) {
-                return { id: cardDoc.id, ...cardDoc.data() } as Card;
+            if (!cardFound) {
+              // Try global cards collection as fallback
+              try {
+                const cardDoc = await getDoc(doc(db, "cards", cardId));
+                if (cardDoc.exists()) {
+                  foundCards.push({ 
+                    id: cardDoc.id, 
+                    ...cardDoc.data(),
+                    tags: cardDoc.data().tags || [] 
+                  } as Card);
+                  cardFound = true;
+                }
+              } catch (err) {
+                // Silent error handling
               }
-            } catch (err) {
-              console.error(`Error fetching card ${cardId} from global cards:`, err);
             }
             
-            console.log(`Could not find card with ID: ${cardId}`);
-            return null;
-          });
+            if (!cardFound) {
+              console.log(`Could not find card with ID: ${cardId} for display case ${displayCase.name}`);
+            }
+          }
           
-          const results = await Promise.all(promises);
-          const validCards = results.filter(Boolean) as Card[];
-          console.log(`Found ${validCards.length} out of ${displayCase.cardIds!.length} cards for display case ${displayCase.name}`);
-          setCardData(validCards);
+          console.log(`Found ${foundCards.length} out of ${displayCase.cardIds!.length} cards for display case ${displayCase.name}`);
+          setCardData(foundCards);
           setLoading(false);
         } catch (error) {
           console.error("Error fetching cards:", error);

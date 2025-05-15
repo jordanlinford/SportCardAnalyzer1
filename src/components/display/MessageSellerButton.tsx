@@ -32,7 +32,6 @@ export function MessageSellerButton({ sellerId, displayCaseId, sellerName }: Mes
   const [subject, setSubject] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [cooldown, setCooldown] = useState(false);
-  const [debug, setDebug] = useState<string | null>(null);
   const [membershipRequired, setMembershipRequired] = useState(true);
   const [showAuthDialog, setShowAuthDialog] = useState(false);
 
@@ -49,7 +48,6 @@ export function MessageSellerButton({ sellerId, displayCaseId, sellerName }: Mes
     // Prevent messaging yourself
     if (isMessagingSelf) {
       toast.error("You cannot send a message to yourself");
-      setDebug("Self-messaging attempt blocked");
       return;
     }
     
@@ -64,13 +62,11 @@ export function MessageSellerButton({ sellerId, displayCaseId, sellerName }: Mes
       const sellerSnap = await getDoc(sellerRef);
       
       if (!sellerSnap.exists()) {
-        setDebug(`Seller not found (ID: ${sellerId})`);
         toast.error("Unable to message: Seller account not found");
         return;
       }
       
       setIsOpen(true);
-      setDebug(null);
     } catch (error) {
       console.error("Error checking seller:", error);
       toast.error("Error verifying seller account");
@@ -86,7 +82,6 @@ export function MessageSellerButton({ sellerId, displayCaseId, sellerName }: Mes
     // Prevent messaging yourself
     if (isMessagingSelf) {
       toast.error("You cannot send a message to yourself");
-      setDebug("Self-messaging attempt blocked");
       return;
     }
 
@@ -103,7 +98,6 @@ export function MessageSellerButton({ sellerId, displayCaseId, sellerName }: Mes
 
     try {
       setIsSending(true);
-      setDebug(null);
       
       // Check for spam behavior
       const isSpam = await checkSpam({
@@ -129,7 +123,6 @@ export function MessageSellerButton({ sellerId, displayCaseId, sellerName }: Mes
       const sellerSnap = await getDoc(sellerRef);
       
       if (!sellerSnap.exists()) {
-        setDebug(`Seller not found (ID: ${sellerId})`);
         toast.error("Unable to send message: Recipient not found");
         return;
       }
@@ -156,7 +149,6 @@ export function MessageSellerButton({ sellerId, displayCaseId, sellerName }: Mes
         }
       } catch (error) {
         console.error("Error verifying display case:", error);
-        setDebug(`Error verifying display case: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
       
       if (!displayCaseExists) {
@@ -177,13 +169,16 @@ export function MessageSellerButton({ sellerId, displayCaseId, sellerName }: Mes
           subject: subject.trim(),
           message: message.trim(),
           timestamp: serverTimestamp(),
-          read: false
+          read: false,
+          deleted: false // Explicitly set deleted flag to false for new messages
         };
+        
+        console.log(`Sending message to user ${sellerId} about display case ${displayCaseId}`);
         
         // Add to messages collection
         const messageDocRef = await addDoc(collection(db, "messages"), messageData);
         
-        setDebug(`Message added successfully with ID: ${messageDocRef.id}`);
+        console.log(`Message sent successfully with ID: ${messageDocRef.id}`);
         
         // Record this action for spam prevention
         await recordUserAction(user.uid, 'message', sellerId);
@@ -199,18 +194,18 @@ export function MessageSellerButton({ sellerId, displayCaseId, sellerName }: Mes
       } catch (error: any) {
         console.error("Error sending message:", error);
         const errorMsg = error?.message || "Unknown error";
+        const errorCode = error?.code || "unknown";
         
-        if (errorMsg.includes("permission") || errorMsg.includes("Missing or insufficient permissions")) {
-          setDebug(`Permission error: ${errorMsg}`);
+        if (errorMsg.includes("permission") || errorCode === "permission-denied" || errorMsg.includes("Missing or insufficient permissions")) {
           toast.error("Permission denied: Make sure you're signed in with the correct account");
+        } else if (errorCode === "unavailable" || errorMsg.includes("network")) {
+          toast.error("Network error: Please check your internet connection and try again");
         } else {
-          setDebug(`Error sending message: ${errorMsg}`);
-          toast.error(`Failed to send message: ${errorMsg}`);
+          toast.error(`Failed to send message. Please try again later.`);
         }
       }
     } catch (error: any) {
       console.error("Error in message preparation:", error);
-      setDebug(`Error in message preparation: ${error instanceof Error ? error.message : 'Unknown error'}`);
       toast.error(`Error preparing message: ${error?.message || 'Unknown error'}`);
     } finally {
       setIsSending(false);
@@ -359,12 +354,6 @@ export function MessageSellerButton({ sellerId, displayCaseId, sellerName }: Mes
             <div className="col-span-full text-xs text-gray-500 text-right">
               {message.length}/500 characters
             </div>
-            
-            {debug && import.meta.env.DEV && (
-              <div className="col-span-full bg-gray-800 text-white text-xs p-2 rounded">
-                {debug}
-              </div>
-            )}
           </div>
           
           <DialogFooter>

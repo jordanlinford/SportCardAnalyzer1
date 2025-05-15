@@ -15,6 +15,7 @@ import SharedTradeView from './pages/SharedTradeView';
 import Home from './pages/index';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import ProfilePage from './pages/ProfilePage';
+import PricingPage from './pages/PricingPage';
 
 const App: React.FC = () => {
   console.log('App component rendering...');
@@ -78,6 +79,10 @@ const App: React.FC = () => {
           <Route 
             path="/profile" 
             element={<ProfilePage />} 
+          />
+          <Route 
+            path="/pricing" 
+            element={<PricingPage />} 
           />
         </Routes>
       </Layout>

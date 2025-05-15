@@ -1,13 +1,93 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import ChartLogo from './ChartLogo';
+import { db } from '@/lib/firebase/config';
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs,
+  orderBy,
+  onSnapshot
+} from 'firebase/firestore';
+import { Badge } from '@/components/ui/badge';
+import { Bell } from 'lucide-react';
 
 export default function Navbar() {
   const location = useLocation();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+  const [totalComments, setTotalComments] = useState(0);
+  const [totalNotifications, setTotalNotifications] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    
+    setIsLoading(true);
+    
+    // Listen for unread messages
+    const messagesRef = collection(db, "messages");
+    const messagesQuery = query(
+      messagesRef, 
+      where("recipientId", "==", user.uid),
+      where("read", "==", false),
+      orderBy("timestamp", "desc")
+    );
+    
+    const unsubMessages = onSnapshot(messagesQuery, (snapshot) => {
+      setUnreadMessages(snapshot.docs.length);
+      updateTotalNotifications(snapshot.docs.length, totalComments);
+      setIsLoading(false);
+    }, (error) => {
+      console.error("Error getting unread messages:", error);
+      setIsLoading(false);
+    });
+    
+    // Get display cases to query for comments
+    const fetchDisplayCasesAndComments = async () => {
+      try {
+        // Get display cases from public_display_cases collection
+        const publicCasesRef = collection(db, "public_display_cases");
+        const publicCasesQuery = query(publicCasesRef, where("userId", "==", user.uid));
+        const publicCasesSnap = await getDocs(publicCasesQuery);
+        
+        // Count all comments across all display cases
+        let commentCount = 0;
+        
+        for (const displayCaseDoc of publicCasesSnap.docs) {
+          const displayCaseData = displayCaseDoc.data();
+          if (displayCaseData.comments && Array.isArray(displayCaseData.comments)) {
+            commentCount += displayCaseData.comments.length;
+          }
+        }
+        
+        setTotalComments(commentCount);
+        updateTotalNotifications(unreadMessages, commentCount);
+        
+        return () => {};
+      } catch (error) {
+        console.error("Error fetching display cases or comments:", error);
+        return () => {};
+      }
+    };
+    
+    // Fetch comments initially
+    fetchDisplayCasesAndComments();
+    
+    // Cleanup message listener on unmount
+    return () => {
+      unsubMessages();
+    };
+  }, [user]);
+  
+  // Helper function to update the total notifications count
+  const updateTotalNotifications = (messages: number, comments: number) => {
+    setTotalNotifications(messages + comments);
+  };
 
   const handleLogout = async () => {
     try {
@@ -64,6 +144,18 @@ export default function Navbar() {
 
       {/* Right Side: Auth - hidden on mobile */}
       <div className="hidden md:flex items-center gap-4">
+        {user && (
+          <div className="relative">
+            <Link to="/dashboard" className="flex items-center gap-1">
+              <Bell className="h-5 w-5 text-gray-500" />
+              {totalNotifications > 0 && !isLoading && (
+                <Badge className="absolute -top-2 -right-2 px-1.5 py-0.5 bg-red-500 text-white text-xs rounded-full">
+                  {totalNotifications}
+                </Badge>
+              )}
+            </Link>
+          </div>
+        )}
         {user ? (
           <button
             onClick={handleLogout}
@@ -89,7 +181,16 @@ export default function Navbar() {
           <MobileNavLink to="/display-cases" label="Display Cases" active={location.pathname === '/display-cases'} onClick={() => setMobileMenuOpen(false)} />
           <MobileNavLink to="/market-analyzer" label="Market Analyzer" active={location.pathname === '/market-analyzer'} onClick={() => setMobileMenuOpen(false)} />
           <MobileNavLink to="/trade-analyzer" label="Trade Analyzer" active={location.pathname.startsWith('/trade-analyzer')} onClick={() => setMobileMenuOpen(false)} />
-          {user && <MobileNavLink to="/profile" label="Profile" active={location.pathname === '/profile'} onClick={() => setMobileMenuOpen(false)} />}
+          {user && (
+            <div className="flex items-center">
+              <MobileNavLink to="/profile" label="Profile" active={location.pathname === '/profile'} onClick={() => setMobileMenuOpen(false)} />
+              {totalNotifications > 0 && (
+                <Badge className="ml-2 px-1.5 py-0.5 bg-red-500 text-white text-xs rounded-full">
+                  {totalNotifications}
+                </Badge>
+              )}
+            </div>
+          )}
           
           <div className="border-t border-gray-200 dark:border-gray-700 mt-2 pt-2">
             {user ? (

@@ -106,8 +106,8 @@ const CollectionGrid: React.FC<CollectionGridProps> = ({
                     <div className="text-xs mb-1">Condition: {card.condition}</div>
                   )}
                   <div className="text-xs mt-2 flex justify-between">
-                    <span>Paid: ${card.pricePaid || 0}</span>
-                    <span>Value: ${card.currentValue || 0}</span>
+                    <span>Paid: ${(card.pricePaid || 0).toFixed(2)}</span>
+                    <span>Value: ${(card.currentValue || 0).toFixed(2)}</span>
                   </div>
                 </div>
               </div>

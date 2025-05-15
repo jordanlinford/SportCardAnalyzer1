@@ -3,7 +3,7 @@ import { useDisplayCases } from "./display/useDisplayCases";
 import { DisplayCase } from "@/types/display-case";
 import { Card } from "@/types/Card";
 import { useAuth } from "@/context/AuthContext";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 
 export function useDisplayCasesWithCards() {
@@ -12,7 +12,7 @@ export function useDisplayCasesWithCards() {
   const { user } = useAuth();
   
   // Get display cases using existing hook
-  const { displayCases, isLoading: isLoadingCases } = useDisplayCases();
+  const { displayCases, isLoading: isLoadingCases, refetch: refetchDisplayCases } = useDisplayCases();
 
   useEffect(() => {
     // Wait for display cases to load
@@ -123,6 +123,77 @@ export function useDisplayCasesWithCards() {
           console.log("Sample fetched card:", allCards[0]);
         }
         
+        // If some cards are missing, it might mean they were deleted
+        // Let's track which display cases need to be cleaned up
+        const displayCasesToUpdate: string[] = [];
+        
+        // Identify display cases with missing cards
+        if (allCards.length < allCardIds.size && displayCases) {
+          console.log(`${allCardIds.size - allCards.length} card IDs could not be found - might need to clean up stale references`);
+          
+          displayCases.forEach(displayCase => {
+            if (displayCase.cardIds && Array.isArray(displayCase.cardIds)) {
+              // Count how many cards are actually missing
+              const missingCardCount = displayCase.cardIds.filter(id => !cardMap.has(id)).length;
+              
+              if (missingCardCount > 0) {
+                console.log(`Display case ${displayCase.name} (${displayCase.id}) has ${missingCardCount} missing cards`);
+                displayCasesToUpdate.push(displayCase.id);
+              }
+            }
+          });
+        }
+        
+        // Update display cases to remove stale card references
+        if (displayCasesToUpdate.length > 0 && displayCases) {
+          console.log(`Updating ${displayCasesToUpdate.length} display cases to remove stale card references`);
+          
+          for (const caseId of displayCasesToUpdate) {
+            try {
+              // Find the display case in our list
+              const displayCase = displayCases.find(dc => dc.id === caseId);
+              if (!displayCase) continue;
+              
+              // Filter out card IDs that don't exist
+              const validCardIds = displayCase.cardIds?.filter(id => cardMap.has(id)) || [];
+              
+              // Update the display case in Firestore
+              const displayCaseRef = doc(db, "users", user.uid, "display_cases", caseId);
+              await updateDoc(displayCaseRef, {
+                cardIds: validCardIds,
+                updatedAt: new Date()
+              });
+              
+              console.log(`Updated display case ${displayCase.name} to remove ${displayCase.cardIds!.length - validCardIds.length} stale card references`);
+              
+              // Also update the public version if it exists
+              if (displayCase.isPublic) {
+                try {
+                  const publicRef = doc(db, "public_display_cases", caseId);
+                  const publicSnap = await getDoc(publicRef);
+                  
+                  if (publicSnap.exists()) {
+                    await updateDoc(publicRef, {
+                      cardIds: validCardIds,
+                      updatedAt: new Date()
+                    });
+                    console.log(`Updated public display case ${caseId} to remove stale card references`);
+                  }
+                } catch (error) {
+                  console.error(`Error updating public display case ${caseId}:`, error);
+                }
+              }
+            } catch (error) {
+              console.error(`Error updating display case ${caseId}:`, error);
+            }
+          }
+          
+          // Refetch display cases if we made updates
+          setTimeout(() => {
+            refetchDisplayCases();
+          }, 1000);
+        }
+        
         processDisplayCases(cardMap);
       } catch (error) {
         console.error("Error fetching cards:", error);
@@ -170,10 +241,11 @@ export function useDisplayCasesWithCards() {
     }
     
     fetchCards();
-  }, [displayCases, isLoadingCases, user]);
+  }, [displayCases, isLoadingCases, user, refetchDisplayCases]);
 
   return { 
     displayCases: displayCasesWithCards, 
-    loading 
+    loading,
+    refetch: refetchDisplayCases
   };
 } 

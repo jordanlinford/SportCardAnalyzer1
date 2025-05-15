@@ -34,6 +34,7 @@ interface Message {
   message: string;
   timestamp: Date;
   read: boolean;
+  deleted?: boolean;
 }
 
 interface Like {
@@ -87,6 +88,8 @@ export function MessageCenter() {
     const messagesQuery = query(
       messagesRef, 
       where("recipientId", "==", user.uid),
+      where("deleted", "!=", true), 
+      orderBy("deleted"), // Required for the != filter
       orderBy("timestamp", "desc")
     );
 
@@ -95,6 +98,9 @@ export function MessageCenter() {
       
       for (const docSnapshot of snapshot.docs) {
         const data = docSnapshot.data();
+        
+        // Skip deleted messages
+        if (data.deleted === true) continue;
         
         // Get display case name if available
         let displayCaseName = "Unknown Display Case";
@@ -128,7 +134,8 @@ export function MessageCenter() {
           subject: data.subject || "No Subject",
           message: data.message || "",
           timestamp: data.timestamp?.toDate() || new Date(),
-          read: data.read || false
+          read: data.read || false,
+          deleted: data.deleted || false
         });
       }
       
@@ -199,12 +206,13 @@ export function MessageCenter() {
         if (displayCaseIds.length > 0) {
           const likesQuery = query(
             likesRef, 
-            where("displayCaseId", "in", displayCaseIds),
-            orderBy("timestamp", "desc")
+            where("displayCaseId", "in", displayCaseIds)
           );
           
           return onSnapshot(likesQuery, async (likesSnapshot) => {
             const likesData: Like[] = [];
+            
+            console.log(`Fetched ${likesSnapshot.docs.length} likes from Firestore`);
             
             for (const docSnapshot of likesSnapshot.docs) {
               const data = docSnapshot.data();
@@ -231,6 +239,7 @@ export function MessageCenter() {
               });
             }
             
+            console.log(`Processed ${likesData.length} likes for the UI`);
             setLikes(likesData);
             setLikesLoading(false);
           }, (error) => {
@@ -280,8 +289,9 @@ export function MessageCenter() {
   useEffect(() => {
     if (!messagesLoading && !likesLoading && !commentsLoading) {
       setLoading(false);
+      console.log(`Loading complete - Messages: ${messages.length}, Likes: ${likes.length}, Comments: ${comments.length}`);
     }
-  }, [messagesLoading, likesLoading, commentsLoading]);
+  }, [messagesLoading, likesLoading, commentsLoading, messages.length, likes.length, comments.length]);
 
   const markAsRead = async (messageId: string) => {
     try {
@@ -357,17 +367,23 @@ export function MessageCenter() {
     <Card className="w-full">
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
-          Messages & Notifications
+          <span>Messages & Notifications</span>
           {!loading && (
             <div className="flex items-center gap-2">
               {messages.filter(m => !m.read).length > 0 && (
                 <Badge className="bg-red-500">{messages.filter(m => !m.read).length} unread</Badge>
               )}
               {likes.length > 0 && (
-                <Badge className="bg-blue-500">{likes.length} likes</Badge>
+                <Badge className="bg-blue-500 flex items-center">
+                  <Heart className="w-3 h-3 mr-1" fill="currentColor" />
+                  <span>{likes.length} likes</span>
+                </Badge>
               )}
               {comments.length > 0 && (
-                <Badge className="bg-green-500">{comments.length} comments</Badge>
+                <Badge className="bg-green-500 flex items-center">
+                  <MessageSquare className="w-3 h-3 mr-1" />
+                  <span>{comments.length} comments</span>
+                </Badge>
               )}
             </div>
           )}
@@ -383,21 +399,21 @@ export function MessageCenter() {
               <MessageCircle className="w-4 h-4 mr-2" />
               Messages
               {messages.filter(m => !m.read).length > 0 && (
-                <Badge className="ml-2 bg-red-500">{messages.filter(m => !m.read).length}</Badge>
+                <Badge className="ml-2 bg-red-500 text-white px-2">{messages.filter(m => !m.read).length}</Badge>
               )}
             </TabsTrigger>
             <TabsTrigger value="comments" className="flex-1">
               <MessageSquare className="w-4 h-4 mr-2" />
               Comments
               {comments.length > 0 && (
-                <Badge className="ml-2 bg-green-500">{comments.length}</Badge>
+                <Badge className="ml-2 bg-green-500 text-white px-2">{comments.length}</Badge>
               )}
             </TabsTrigger>
             <TabsTrigger value="likes" className="flex-1">
-              <Heart className="w-4 h-4 mr-2" />
+              <Heart className="w-4 h-4 mr-2" fill={likes.length > 0 ? "currentColor" : "none"} />
               Likes
               {likes.length > 0 && (
-                <Badge className="ml-2 bg-blue-500">{likes.length}</Badge>
+                <Badge className="ml-2 bg-blue-500 text-white px-2">{likes.length}</Badge>
               )}
             </TabsTrigger>
           </TabsList>
@@ -491,22 +507,26 @@ export function MessageCenter() {
               </div>
             ) : likes.length > 0 ? (
               likes.map(like => (
-                <div key={like.id} className="border border-gray-200 rounded-lg p-4">
+                <div key={like.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
                   <div className="flex items-center mb-2">
                     <Heart className="w-5 h-5 text-red-500 mr-2" fill="currentColor" />
                     <span className="font-medium">Someone liked your display case</span>
+                    <span className="ml-auto text-xs text-gray-500">
+                      {formatDistanceToNow(like.timestamp, { addSuffix: true })}
+                    </span>
                   </div>
-                  <p className="text-sm text-gray-500 mb-1">
-                    Display Case: {like.displayCaseName}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    {formatDistanceToNow(like.timestamp, { addSuffix: true })}
-                  </p>
+                  <div className="px-2 py-1 bg-blue-50 border border-blue-100 rounded-md mb-2">
+                    <p className="text-sm font-medium text-blue-800">
+                      Display Case: {like.displayCaseName}
+                    </p>
+                  </div>
                 </div>
               ))
             ) : (
               <div className="text-center py-8 text-gray-500">
-                No likes yet
+                <Heart className="w-10 h-10 mx-auto mb-4 text-gray-300" />
+                <p>No likes yet</p>
+                <p className="text-sm mt-2">When someone likes your display cases, it will appear here</p>
               </div>
             )}
           </TabsContent>
