@@ -4,9 +4,9 @@ import { BrowserRouter } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { SubscriptionProvider } from './context/SubscriptionContext'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { HelmetProvider } from 'react-helmet-async'
 import App from './App'
 import './index.css'
+import './ForceGrid.css'
 
 console.log('Starting app initialization...');
 
@@ -24,9 +24,7 @@ if (!rootElement) {
         <BrowserRouter>
           <AuthProvider>
             <SubscriptionProvider>
-              <HelmetProvider>
-                <App />
-              </HelmetProvider>
+              <App />
             </SubscriptionProvider>
           </AuthProvider>
         </BrowserRouter>

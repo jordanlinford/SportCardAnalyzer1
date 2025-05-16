@@ -4,7 +4,7 @@ import { Button } from '../components/ui/button';
 import { Checkbox } from '../components/ui/checkbox';
 import { Label } from '../components/ui/label';
 import { CreateDisplayCaseModal } from '../components/display-cases/CreateDisplayCaseModal';
-import DisplayCaseList from '../components/display-cases/DisplayCaseList';
+import DisplayCaseGrid from '../components/display-cases/DisplayCaseGrid';
 import { useAuth } from '../context/AuthContext';
 import { DisplayCase } from '../types/display-case';
 import { Card } from '../types/Card';
@@ -67,7 +67,7 @@ export default function DisplayCases() {
   const displayCasesToRender = showRealImages ? displayCasesWithCards : (displayCases ?? []);
 
   return (
-    <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
+    <div className="p-4">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 sm:mb-8 gap-4 sm:gap-0">
         <h1 className="text-xl sm:text-2xl font-bold">Display Cases</h1>
         <div className="flex flex-wrap gap-2 items-center">
@@ -88,7 +88,7 @@ export default function DisplayCases() {
       </div>
 
       {isDisplayCasesLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {[...Array(6)].map((_, i) => (
             <div key={i} className="bg-white rounded-xl shadow-sm p-6">
               <Skeleton className="h-48 w-full mb-4" />
@@ -110,7 +110,7 @@ export default function DisplayCases() {
           </Button>
         </div>
       ) : (
-        <DisplayCaseList displayCases={displayCasesToRender} />
+        <DisplayCaseGrid displayCases={displayCasesToRender} />
       )}
 
       <CreateDisplayCaseModal

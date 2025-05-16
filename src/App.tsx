@@ -16,6 +16,7 @@ import Home from './pages/index';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import ProfilePage from './pages/ProfilePage';
 import PricingPage from './pages/PricingPage';
+import ForceGridFix from './pages/ForceGridFix';
 
 const App: React.FC = () => {
   console.log('App component rendering...');
@@ -27,6 +28,10 @@ const App: React.FC = () => {
           <Route 
             path="/" 
             element={<Home />} 
+          />
+          <Route 
+            path="/display/:publicId" 
+            element={<SimplePublicDisplayCase />} 
           />
           <Route 
             path="/dashboard" 
@@ -73,10 +78,6 @@ const App: React.FC = () => {
             element={<DisplayCasePage />} 
           />
           <Route 
-            path="/display-case/:publicId" 
-            element={<SimplePublicDisplayCase />} 
-          />
-          <Route 
             path="/profile" 
             element={<ProfilePage />} 
           />
@@ -87,6 +88,7 @@ const App: React.FC = () => {
         </Routes>
       </Layout>
       <Toaster position="top-right" />
+      <ForceGridFix />
     </>
   );
 };

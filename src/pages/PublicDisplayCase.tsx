@@ -18,6 +18,7 @@ import { doc, getDoc, updateDoc, collection, getDocs, query, where, increment } 
 import { db } from "@/lib/firebase/config";
 import { DisplayCaseLoading } from '@/components/display-cases/DisplayCaseLoading';
 import { useAuth } from "@/context/AuthContext";
+import DisplayCaseCardGrid from '@/components/display-cases/DisplayCaseCardGrid';
 
 // Fallback cards to show when no real cards can be loaded
 const fallbackCards: Card[] = [
@@ -317,8 +318,9 @@ export default function PublicDisplayCase() {
   }, [displayCase, handleView]);
 
   return (
-    <div className="p-4 space-y-6 max-w-6xl mx-auto">
-      <div className="bg-white rounded-xl shadow-sm p-6">
+    <div className="p-4">
+      {/* Display Case Header */}
+      <div className="bg-white rounded-xl shadow-md p-6 mb-6">
         <div className="text-center mb-6">
           <h1 className="text-3xl font-bold mb-2">{displayCase.name}</h1>
           {displayCase.description && (
@@ -326,14 +328,13 @@ export default function PublicDisplayCase() {
           )}
         </div>
 
-        <div className="flex items-center justify-between text-sm text-gray-400 mb-2">
+        <div className="flex items-center justify-between text-sm text-gray-400 mb-4">
           <span>Created: {displayCase.createdAt.toLocaleDateString()}</span>
           <span>Theme: {displayCase.background || "Default"}</span>
           <LikeButton displayCaseId={displayCase.id} />
         </div>
 
-        <div className="flex items-center space-x-4 mb-4">
-          <LikeButton displayCaseId={displayCase.id} />
+        <div className="flex justify-center space-x-4">
           <EnhancedShareButton 
             publicId={displayCase.publicId} 
             title={displayCase.name}
@@ -343,7 +344,7 @@ export default function PublicDisplayCase() {
             displayCaseId={displayCase.id}
             sellerName="Owner"
           />
-          <span className="text-gray-500">👁️ {displayCase.visits || 0} views</span>
+          <span className="inline-flex items-center text-gray-500 text-sm">👁️ {displayCase.visits || 0} views</span>
         </div>
         
         {cards.length === 0 && !usingFallbackCards && (
@@ -373,11 +374,8 @@ export default function PublicDisplayCase() {
         )}
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm p-6">
-        <CommentSection displayCaseId={displayCase.id} />
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm p-6">
+      {/* Cards Display */}
+      <div className="bg-white rounded-xl shadow-md p-6 mb-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-semibold">Cards</h2>
           {cards.length === 0 && publicId && user && (
@@ -391,14 +389,16 @@ export default function PublicDisplayCase() {
         </div>
         
         {displayCards.length === 0 ? (
-          <div className="space-y-6">
-            <div className="text-center text-gray-400 italic mt-4 mb-6">
-              No cards in this display case yet.
-            </div>
+          <div className="py-12 text-center">
+            <div className="text-3xl mb-2">📭</div>
+            <h3 className="text-xl font-medium mb-2">Empty Display Case</h3>
+            <p className="text-gray-500 mb-4 max-w-md mx-auto">
+              This display case doesn't contain any cards from the owner's collection.
+            </p>
             
             {/* Display diagnostic info if display case has cardIds but no cards */}
             {displayCase.cardIds && displayCase.cardIds.length > 0 && (
-              <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-md text-sm">
+              <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-md text-sm mx-auto max-w-md">
                 <p className="font-medium text-yellow-800 mb-1">
                   Display case has {displayCase.cardIds.length} card IDs but no cards could be loaded
                 </p>
@@ -428,7 +428,7 @@ export default function PublicDisplayCase() {
             )}
             
             {publicId && showAdvancedTools && user && (
-              <div className="space-y-6">
+              <div className="space-y-6 max-w-md mx-auto mt-4">
                 <SyncDisplayCase displayCaseId={publicId} />
                 <DirectFixer displayCaseId={publicId} />
                 <DisplayCaseDebugging displayCaseId={publicId} />
@@ -437,39 +437,7 @@ export default function PublicDisplayCase() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-              {displayCards.map((card: Card) => (
-                <div key={card.id} className="relative group">
-                  {card.imageUrl ? (
-                    <>
-                      <img 
-                        src={card.imageUrl} 
-                        alt={`${card.playerName} ${card.year} ${card.cardSet}`}
-                        className="rounded-xl w-full shadow-md aspect-[2/3] object-cover"
-                      />
-                      <div className="absolute inset-0 bg-black bg-opacity-70 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center text-white text-sm rounded-xl p-2">
-                        <div className="text-center">
-                          <div className="font-semibold">{card.playerName}</div>
-                          <div className="text-xs">{card.year} {card.cardSet}</div>
-                          {card.price && (
-                            <div className="text-xs mt-1">${card.price.toLocaleString()}</div>
-                          )}
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="rounded-xl w-full shadow-md aspect-[2/3] bg-gray-100 flex items-center justify-center">
-                      <div className="text-center p-4">
-                        <div className="font-semibold">{card.playerName}</div>
-                        <div className="text-xs text-gray-600">
-                          {card.year} {card.cardSet}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+            <DisplayCaseCardGrid cards={displayCards} />
             <div className="block md:hidden text-xs text-gray-400 mt-2 text-center">
               Tap cards to view details
             </div>
@@ -477,33 +445,14 @@ export default function PublicDisplayCase() {
         )}
       </div>
 
-      {displayCase.comments && displayCase.comments.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <h2 className="text-xl font-semibold mb-4">Comments</h2>
-          <div className="space-y-4">
-            {displayCase.comments.map((comment: DisplayCaseComment, index: number) => (
-              <div key={index} className="bg-gray-50 p-4 rounded-lg">
-                <p className="text-gray-700">{comment.text}</p>
-                <p className="text-sm text-gray-500 mt-2">
-                  {comment.timestamp.toLocaleDateString()}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      
-      {/* Only show advanced tools to logged in users */}
-      {cards.length > 0 && publicId && user && showDebugTools && (
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <h2 className="text-xl font-semibold mb-4">Display Case Debugging</h2>
-          <DisplayCaseDebugging displayCaseId={publicId} />
-        </div>
-      )}
+      {/* Comments Section */}
+      <div className="bg-white rounded-xl shadow-md p-6">
+        <CommentSection displayCaseId={displayCase.id} />
+      </div>
 
-      {/* Debug Tools Section - Only for logged in users */}
+      {/* Only show advanced debug tools to logged in users */}
       {user && (
-        <div className="bg-white rounded-xl shadow-sm p-6">
+        <div className="bg-white rounded-xl shadow-md p-6 mt-6">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold">Display Case Tools</h2>
             <button 

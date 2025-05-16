@@ -7,6 +7,7 @@ import { CardGrid } from "@/components/cards/CardGrid";
 import { cn } from "@/lib/utils";
 import { DisplayCase } from "@/types/display-case";
 import { useAuth } from "@/context/AuthContext";
+import DisplayCaseCardGrid from "@/components/display-cases/DisplayCaseCardGrid";
 
 const themeStyles = {
   wood: "bg-amber-50 border-amber-200",
@@ -271,37 +272,13 @@ export default function DisplayCaseDetailPage() {
         </div>
 
         <div className="bg-white rounded-lg shadow-sm p-6">
-          {/* Render actual card images instead of just IDs */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {cards.length > 0 ? (
-              cards.map((card) => (
-                <div key={card.id} className="relative group">
-                  {card.imageUrl ? (
-                    <img 
-                      src={card.imageUrl} 
-                      alt={card.playerName || "Card"} 
-                      className="w-full h-auto rounded-lg border object-contain aspect-[3/4]"
-                    />
-                  ) : (
-                    <div className="w-full aspect-[3/4] bg-gray-200 rounded-lg flex items-center justify-center">
-                      <span className="text-gray-500">{card.playerName || "No Image"}</span>
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-black bg-opacity-70 opacity-0 group-hover:opacity-100 transition-all duration-200 flex items-center justify-center text-white text-xs rounded-lg p-2">
-                    <div className="text-center">
-                      <div className="font-semibold">{card.playerName || "Unknown"}</div>
-                      <div>{card.year} {card.cardSet}</div>
-                      <div className="mt-1">{card.condition}</div>
-                    </div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="col-span-full text-center py-12 text-muted-foreground">
-                No cards in this display case yet.
-              </div>
-            )}
-          </div>
+          {cards.length > 0 ? (
+            <DisplayCaseCardGrid cards={cards} />
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              No cards in this display case yet.
+            </div>
+          )}
         </div>
       </div>
     </div>
