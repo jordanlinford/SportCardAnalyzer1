@@ -6,7 +6,7 @@
     "dev": "vite",
     "prepare-logos": "node scripts/prepare-logos.js",
     "prebuild": "npm run prepare-logos",
-    "build": "node ./node_modules/vite/bin/vite.js build",
+    "build": "npx vite build",
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test": "vitest run --environment jsdom",
@@ -18,6 +18,8 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.0.1",
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^5.4.19",
     "@radix-ui/react-avatar": "^1.1.7",
     "@radix-ui/react-dialog": "^1.1.12",
     "@radix-ui/react-dropdown-menu": "^2.1.13",
