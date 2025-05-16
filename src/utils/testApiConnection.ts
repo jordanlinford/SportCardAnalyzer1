@@ -21,7 +21,7 @@ export async function testMarketAnalyzerConnection(playerName = "LeBron James"):
   
   try {
     // Make a simple request to test the connection
-    const response = await axios.post(`${API_URL}/market-analyzer`, {
+    const response = await axios.post(`${API_URL}/market_analyzer`, {
       playerName,
       year: "2020",
       cardSet: "Prizm",
@@ -88,7 +88,7 @@ export async function testAlternativeEndpoints(): Promise<{
   for (const url of alternativeUrls) {
     try {
       console.log(`Trying alternative API URL: ${url}`);
-      const response = await axios.post(`${url}/market-analyzer`, {
+      const response = await axios.post(`${url}/market_analyzer`, {
         playerName: "Test Player",
         grade: "any"
       }, {

@@ -21,9 +21,11 @@ console.log("Firebase config:", {
 });
 
 // API URL configuration
-export const API_URL = import.meta.env.PROD 
-  ? 'https://sports-card-api.vercel.app/api'  // Updated production URL
-  : 'http://localhost:8000/api';  // Development URL
+export const API_URL = import.meta.env.VITE_API_URL || (
+  import.meta.env.PROD 
+    ? 'https://sports-card-api.vercel.app/api'  // Production fallback URL
+    : 'http://localhost:3001/api'  // Development fallback URL
+);
 
 // Add a comment explaining deployment requirements
 // NOTE: For production, ensure the API backend is deployed at sports-card-api.vercel.app

@@ -20,7 +20,7 @@ export async function analyzeMarket(input: MarketAnalysisRequest): Promise<Marke
   try {
     const token = await user.getIdToken();
 
-    const res = await axiosClient.post<MarketAnalysisResponse>("/analyze-market", input, {
+    const res = await axiosClient.post<MarketAnalysisResponse>("/market_analyzer", input, {
       headers: { Authorization: `Bearer ${token}` },
     });
 

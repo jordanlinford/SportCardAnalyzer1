@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { API_URL } from '@/lib/firebase/config';
 
 export default function PricingPage() {
   const { user } = useAuth();
@@ -108,11 +109,21 @@ export default function PricingPage() {
       
       console.log(`Subscribing to ${plan.name} with price ID: ${priceId}`);
       
-      const response = await fetch('http://localhost:3001/api/create-checkout-session', {
+      // Use API_URL from config imported at the top
+      
+      console.log(`Using API URL: ${API_URL}`);
+      
+      console.log(`Making request to ${API_URL}/create-checkout-session`);
+      console.log('If this fails, please check browser console and look for CORS errors');
+      
+      // For troubleshooting, open your browser DevTools (F12), go to Network tab, and look for this request
+      const response = await fetch(`${API_URL}/create-checkout-session`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        // Ensure credentials are included for CORS
+        credentials: 'include',
         body: JSON.stringify({
           priceId,
           userId: user.uid,

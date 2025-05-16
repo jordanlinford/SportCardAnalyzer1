@@ -19,7 +19,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
 
 const app = express();
 app.use(cors({
-  origin: ['https://www.sportscardanalyzer.com', 'https://sportscardanalyzer.com', 'http://localhost:5173'],
+  origin: ['https://www.sportscardanalyzer.com', 'https://sportscardanalyzer.com', 'http://localhost:5173', 'http://localhost:5135'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']

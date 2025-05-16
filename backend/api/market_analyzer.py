@@ -84,7 +84,7 @@ def get_mock_sales_data(player_name: str) -> List[Dict[str, Any]]:
 async def root():
     return {"message": "Market Analyzer API"}
 
-@app.post("/api/market-analyzer")
+@app.post("/api/market_analyzer")
 async def analyze_market(request: AnalyzeMarketRequest):
     logger.info(f"Received request for player: {request.playerName}")
     
@@ -132,7 +132,7 @@ async def handler(request: Request):
     path = request.url.path
     method = request.method
     
-    if path == "/api/market-analyzer" and method == "POST":
+    if path == "/api/market_analyzer" and method == "POST":
         try:
             # Parse the JSON body
             body = await request.json()
