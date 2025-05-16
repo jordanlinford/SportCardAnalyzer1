@@ -22,8 +22,12 @@ console.log("Firebase config:", {
 
 // API URL configuration
 export const API_URL = import.meta.env.PROD 
-  ? 'https://sports-card-analyzer.vercel.app/api'  // Production URL
+  ? 'https://sports-card-api.vercel.app/api'  // Updated production URL
   : 'http://localhost:8000/api';  // Development URL
+
+// Add a comment explaining deployment requirements
+// NOTE: For production, ensure the API backend is deployed at sports-card-api.vercel.app
+// and properly configured to handle CORS requests from the main app domain
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);

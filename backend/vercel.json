@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "scraper_api.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "scraper_api.py"
+    }
+  ],
+  "env": {
+    "PYTHONPATH": ".",
+    "API_ENV": "production"
+  },
+  "regions": ["iad1"]
+} 

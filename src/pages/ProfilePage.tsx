@@ -1,4 +1,6 @@
 /**
+ * IMPORTANT: CURRENT PRODUCTION VERSION - DO NOT OVERRIDE DURING DEPLOYMENT
+ * 
  * PERMANENT PROFILE PAGE STRUCTURE
  * 
  * This file defines the core profile page structure and must not be modified without careful consideration.
@@ -13,6 +15,12 @@
  * 3. Subscription Management
  * 
  * DO NOT MODIFY THIS STRUCTURE WITHOUT UPDATING THE DOCUMENTATION
+ * 
+ * STRIPE PRODUCT IDS (DO NOT CHANGE):
+ * - Star Plan Monthly: price_1RDB4fGCix0pRkbmlNdsyo7s
+ * - Star Plan Annual: price_1RN5uOGCix0pRkbmK2kCjqw4
+ * - Veteran Plan Monthly: price_1RDB4fGCix0pRkbmmPrBX8FE
+ * - Veteran Plan Annual: price_1RN5vwGCix0pRkbmT65EllS1
  */
 
 import React, { useState, useEffect } from 'react';
@@ -94,23 +102,41 @@ export default function ProfilePage() {
     
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_URL}/create-portal-session`, {
+      console.log(`Creating portal session for user: ${user.uid}`);
+      
+      const fullApiUrl = `${API_URL}/create-portal-session`;
+      console.log(`Using API URL: ${fullApiUrl}`);
+      
+      const response = await fetch(fullApiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.uid })
       });
       
-      const { url } = await response.json();
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('API Error:', errorData);
+        toast.error(`Failed to create portal session: ${errorData.message || response.statusText}`);
+        setIsLoading(false);
+        return;
+      }
       
-      if (url) {
-        window.location.href = url;
+      const data = await response.json();
+      console.log('Portal session created:', data);
+      
+      if (data.url) {
+        // Wait a moment to ensure the loading state is seen
+        setTimeout(() => {
+          window.location.href = data.url;
+        }, 500);
       } else {
-        toast.error('Failed to create portal session');
+        console.error('No URL in response:', data);
+        toast.error("Failed to create portal session: No URL returned");
+        setIsLoading(false);
       }
     } catch (error) {
       console.error('Error creating portal session:', error);
-      toast.error('Failed to create portal session');
-    } finally {
+      toast.error(`Failed to create portal session: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setIsLoading(false);
     }
   };
@@ -205,28 +231,50 @@ export default function ProfilePage() {
     
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_URL}/create-checkout-session`, {
+      console.log(`Creating checkout session for plan ID: ${planId}, userId: ${user.uid}`);
+      
+      const fullApiUrl = `${API_URL}/create-checkout-session`;
+      console.log(`Using API URL: ${fullApiUrl}`);
+      
+      const requestData = { 
+        priceId: planId,
+        userId: user.uid,
+        planName: planId.includes('star') ? 'Star Plan' : 'Veteran Plan',
+        interval: planId.includes('annual') ? 'annual' : 'monthly'
+      };
+      
+      console.log('Sending request with data:', JSON.stringify(requestData));
+      
+      const response = await fetch(fullApiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          priceId: planId,
-          userId: user.uid,
-          planName: planId.includes('star') ? 'Star Plan' : 'Veteran Plan',
-          interval: planId.includes('annual') ? 'annual' : 'monthly'
-        })
+        body: JSON.stringify(requestData)
       });
       
-      const { url } = await response.json();
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('API Error:', errorData);
+        toast.error(`Failed to create checkout session: ${errorData.message || response.statusText}`);
+        setIsLoading(false);
+        return;
+      }
       
-      if (url) {
-        window.location.href = url;
+      const data = await response.json();
+      console.log('Checkout session created:', data);
+      
+      if (data.url) {
+        // Wait a moment to ensure the loading state is seen
+        setTimeout(() => {
+          window.location.href = data.url;
+        }, 500);
       } else {
-        toast.error('Failed to create checkout session');
+        console.error('No URL in response:', data);
+        toast.error("Failed to create checkout session: No URL returned");
+        setIsLoading(false);
       }
     } catch (error) {
       console.error('Error creating checkout session:', error);
-      toast.error('Failed to create checkout session');
-    } finally {
+      toast.error(`Failed to create checkout session: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setIsLoading(false);
     }
   };
@@ -303,22 +351,6 @@ export default function ProfilePage() {
                 </div>
               </div>
             </div>
-            
-            <Separator />
-            
-            <div>
-              <h3 className="font-medium">Collection Stats</h3>
-              <div className="mt-2 grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Display Cases</p>
-                  <p>{userData.displayCaseCount}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Cards</p>
-                  <p>{userData.cardCount}</p>
-                </div>
-              </div>
-            </div>
           </div>
         </CardContent>
       </Card>
@@ -330,6 +362,64 @@ export default function ProfilePage() {
           <CardDescription>Update your account information</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Profile Picture Update */}
+          <div className="space-y-2">
+            <Label>Profile Picture</Label>
+            <div className="flex items-center gap-4">
+              <Avatar className="h-20 w-20">
+                <AvatarImage src={userData.photoURL || ''} alt={userData.name} />
+                <AvatarFallback>{userData.name?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
+              </Avatar>
+              <div className="space-y-2">
+                <Input
+                  id="profile-picture"
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    if (!user || !e.target.files || !e.target.files[0]) return;
+                    
+                    const file = e.target.files[0];
+                    setIsLoading(true);
+                    
+                    try {
+                      // Import storage for image uploads
+                      const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+                      const storage = getStorage();
+                      
+                      // Create a reference to the file location
+                      const storageRef = ref(storage, `user-profiles/${user.uid}/${file.name}`);
+                      
+                      // Upload the file
+                      const snapshot = await uploadBytes(storageRef, file);
+                      
+                      // Get download URL
+                      const downloadURL = await getDownloadURL(snapshot.ref);
+                      
+                      // Update user profile
+                      await updateProfile({ photoURL: downloadURL });
+                      
+                      // Update UI
+                      setUserData({
+                        ...userData,
+                        photoURL: downloadURL
+                      });
+                      
+                      toast.success('Profile picture updated successfully');
+                    } catch (error: any) {
+                      console.error('Error updating profile picture:', error);
+                      toast.error(error.message || 'Failed to update profile picture');
+                    } finally {
+                      setIsLoading(false);
+                    }
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  JPG, PNG or GIF, max 2MB
+                </p>
+              </div>
+            </div>
+          </div>
+          
           {/* Username Update */}
           <div className="space-y-2">
             <Label htmlFor="username">Username</Label>
