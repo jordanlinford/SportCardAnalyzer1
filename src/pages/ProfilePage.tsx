@@ -7,16 +7,28 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { useNavigate } from 'react-router-dom';
 import { db } from '@/lib/firebase/config';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { Badge } from '@/components/ui/badge';
 import { API_URL } from '@/lib/firebase/config';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
+import { getAuth, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, updateProfile, updateEmail } = useAuth();
   const { tier: subscriptionTier, loading: subscriptionLoading } = useUserSubscription();
   const [managementUrl, setManagementUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const auth = getAuth();
+
+  // Form states
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   // User data
   const [userData, setUserData] = useState<any>({
@@ -47,9 +59,12 @@ export default function ProfilePage() {
             displayCaseCount: data.displayCaseCount || 0,
             cardCount: data.cardCount || 0
           });
+          setUsername(user.displayName || '');
+          setEmail(user.email || '');
         }
       } catch (error) {
         console.error('Error fetching user data:', error);
+        toast.error('Failed to load user data');
       }
     };
 
@@ -73,17 +88,130 @@ export default function ProfilePage() {
       if (url) {
         window.location.href = url;
       } else {
-        console.error('No URL returned from portal session creation');
+        toast.error('Failed to create portal session');
       }
     } catch (error) {
       console.error('Error creating portal session:', error);
+      toast.error('Failed to create portal session');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const upgradeSubscription = () => {
-    navigate('/pricing');
+  const handleUpdateUsername = async () => {
+    if (!user) return;
+    if (!username.trim()) {
+      toast.error('Username cannot be empty');
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      await updateProfile({ displayName: username });
+      await updateDoc(doc(db, 'users', user.uid), {
+        displayName: username
+      });
+      toast.success('Username updated successfully');
+    } catch (error: any) {
+      console.error('Error updating username:', error);
+      toast.error(error.message || 'Failed to update username');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpdateEmail = async () => {
+    if (!user) return;
+    if (!email.trim()) {
+      toast.error('Email cannot be empty');
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      await updateEmail(email);
+      await updateDoc(doc(db, 'users', user.uid), {
+        email: email
+      });
+      toast.success('Email updated successfully');
+    } catch (error: any) {
+      console.error('Error updating email:', error);
+      toast.error(error.message || 'Failed to update email');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpdatePassword = async () => {
+    if (!user) return;
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      toast.error('All password fields are required');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error('New passwords do not match');
+      return;
+    }
+    if (newPassword.length < 6) {
+      toast.error('Password must be at least 6 characters long');
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      // Re-authenticate user
+      const credential = EmailAuthProvider.credential(user.email!, currentPassword);
+      await reauthenticateWithCredential(user, credential);
+      
+      // Update password
+      await updatePassword(user, newPassword);
+      toast.success('Password updated successfully');
+      
+      // Clear password fields
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (error: any) {
+      console.error('Error updating password:', error);
+      if (error.code === 'auth/wrong-password') {
+        toast.error('Current password is incorrect');
+      } else {
+        toast.error(error.message || 'Failed to update password');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const upgradeSubscription = async (planId: string) => {
+    if (!user) return;
+    
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/create-checkout-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          priceId: planId,
+          userId: user.uid,
+          planName: planId.includes('star') ? 'Star Plan' : 'Veteran Plan',
+          interval: planId.includes('annual') ? 'annual' : 'monthly'
+        })
+      });
+      
+      const { url } = await response.json();
+      
+      if (url) {
+        window.location.href = url;
+      } else {
+        toast.error('Failed to create checkout session');
+      }
+    } catch (error) {
+      console.error('Error creating checkout session:', error);
+      toast.error('Failed to create checkout session');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Determine subscription badge color
@@ -115,7 +243,8 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="container mx-auto py-8 space-y-6">
+      {/* Profile Overview Card */}
       <Card>
         <CardHeader className="pb-4">
           <div className="flex items-center space-x-4">
@@ -142,7 +271,6 @@ export default function ProfilePage() {
         <CardContent>
           <div className="space-y-4">
             <div>
-              <h3 className="font-medium">Account</h3>
               <div className="mt-2 grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Member since</p>
@@ -150,7 +278,11 @@ export default function ProfilePage() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Subscription</p>
-                  <p className="capitalize">{subscriptionTier || userData.subscriptionTier} Plan</p>
+                  <p>{subscriptionTier === 'veteran' 
+                    ? 'Veteran Plan' 
+                    : subscriptionTier === 'star' 
+                      ? 'Star Plan' 
+                      : 'Rookie Plan'}</p>
                 </div>
               </div>
             </div>
@@ -172,17 +304,170 @@ export default function ProfilePage() {
             </div>
           </div>
         </CardContent>
-        
-        <CardFooter className="flex justify-between">
+      </Card>
+
+      {/* Account Settings Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Account Settings</CardTitle>
+          <CardDescription>Update your account information</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Username Update */}
+          <div className="space-y-2">
+            <Label htmlFor="username">Username</Label>
+            <div className="flex gap-2">
+              <Input
+                id="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Enter new username"
+              />
+              <Button 
+                onClick={handleUpdateUsername}
+                disabled={isLoading || !username.trim()}
+              >
+                Update
+              </Button>
+            </div>
+          </div>
+
+          {/* Email Update */}
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <div className="flex gap-2">
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter new email"
+              />
+              <Button 
+                onClick={handleUpdateEmail}
+                disabled={isLoading || !email.trim()}
+              >
+                Update
+              </Button>
+            </div>
+          </div>
+
+          {/* Password Update */}
+          <div className="space-y-4">
+            <Label>Password</Label>
+            <div className="space-y-2">
+              <Input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Current password"
+              />
+              <Input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="New password"
+              />
+              <Input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm new password"
+              />
+              <Button 
+                onClick={handleUpdatePassword}
+                disabled={isLoading || !currentPassword || !newPassword || !confirmPassword}
+              >
+                Update Password
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Subscription Management Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Subscription Management</CardTitle>
+          <CardDescription>Upgrade your plan to unlock more features</CardDescription>
+        </CardHeader>
+        <CardContent>
           {subscriptionTier === 'rookie' ? (
-            <Button onClick={upgradeSubscription}>Upgrade Plan</Button>
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Star Plan */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Star Plan</CardTitle>
+                  <CardDescription>Perfect for serious collectors</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-2">
+                    <li>Everything in Rookie Plan</li>
+                    <li>Advanced analytics</li>
+                    <li>Price predictions</li>
+                    <li>Grading recommendations</li>
+                    <li>Priority support</li>
+                  </ul>
+                </CardContent>
+                <CardFooter className="flex gap-2">
+                  <Button 
+                    onClick={() => upgradeSubscription('price_1RDB4fGCix0pRkbmlNdsyo7s')}
+                    disabled={isLoading}
+                  >
+                    Monthly
+                  </Button>
+                  <Button 
+                    onClick={() => upgradeSubscription('price_1RN5uOGCix0pRkbmK2kCjqw4')}
+                    disabled={isLoading}
+                  >
+                    Annual
+                  </Button>
+                </CardFooter>
+              </Card>
+
+              {/* Veteran Plan */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Veteran Plan</CardTitle>
+                  <CardDescription>For professional collectors</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-2">
+                    <li>Everything in Star Plan</li>
+                    <li>Bulk card management</li>
+                    <li>Custom reports</li>
+                    <li>API access</li>
+                    <li>Dedicated support</li>
+                  </ul>
+                </CardContent>
+                <CardFooter className="flex gap-2">
+                  <Button 
+                    onClick={() => upgradeSubscription('price_1RDB4fGCix0pRkbmmPrBX8FE')}
+                    disabled={isLoading}
+                  >
+                    Monthly
+                  </Button>
+                  <Button 
+                    onClick={() => upgradeSubscription('price_1RN5vwGCix0pRkbmT65EllS1')}
+                    disabled={isLoading}
+                  >
+                    Annual
+                  </Button>
+                </CardFooter>
+              </Card>
+            </div>
           ) : (
-            <Button variant="outline" onClick={createPortalSession} disabled={isLoading}>
-              {isLoading ? 'Loading...' : 'Manage Subscription'}
-            </Button>
+            <div className="space-y-4">
+              <p>You are currently on the {subscriptionTier} plan.</p>
+              <Button 
+                onClick={createPortalSession}
+                disabled={isLoading}
+              >
+                Manage Subscription
+              </Button>
+            </div>
           )}
-          <Button variant="ghost" onClick={() => navigate('/display-cases')}>View Display Cases</Button>
-        </CardFooter>
+        </CardContent>
       </Card>
     </div>
   );
