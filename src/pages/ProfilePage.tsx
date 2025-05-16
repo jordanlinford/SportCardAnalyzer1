@@ -1,3 +1,20 @@
+/**
+ * PERMANENT PROFILE PAGE STRUCTURE
+ * 
+ * This file defines the core profile page structure and must not be modified without careful consideration.
+ * Any changes must be documented in src/pages/PROFILE_README.md
+ * 
+ * Last Updated: [Current Date]
+ * Commit: PERMANENT: Profile page structure with subscription management and account settings
+ * 
+ * Core Features:
+ * 1. Profile Overview
+ * 2. Account Settings
+ * 3. Subscription Management
+ * 
+ * DO NOT MODIFY THIS STRUCTURE WITHOUT UPDATING THE DOCUMENTATION
+ */
+
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useUserSubscription } from '@/hooks/useUserSubscription';
