@@ -6,7 +6,7 @@
     "dev": "vite",
     "prepare-logos": "node scripts/prepare-logos.js",
     "prebuild": "npm run prepare-logos",
-    "build": "vite build",
+    "build": "node ./node_modules/vite/bin/vite.js build",
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test": "vitest run --environment jsdom",
