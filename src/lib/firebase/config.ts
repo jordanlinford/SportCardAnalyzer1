@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
@@ -20,10 +21,11 @@ console.log("Firebase config:", {
   hasAuthDomain: !!firebaseConfig.authDomain
 });
 
-// API URL configuration
-export const API_URL = import.meta.env.PROD 
-  ? 'https://sports-card-api.vercel.app/api'  // Updated production URL
-  : 'http://localhost:8000/api';  // Development URL
+// API URL configuration - The /api part is handled by the server endpoints
+export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+// Log API URL for debugging
+console.log("API URL configured as:", API_URL);
 
 // Add a comment explaining deployment requirements
 // NOTE: For production, ensure the API backend is deployed at sports-card-api.vercel.app

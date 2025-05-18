@@ -10,7 +10,9 @@ import {
   RefreshCw,
   LineChart,
   Info,
-  DatabaseIcon
+  DatabaseIcon,
+  ImageOff,
+  Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +29,10 @@ import { useCards } from '@/hooks/useCards';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext'; // Add auth context
 import { useUserSubscription } from "@/hooks/useUserSubscription";
+import { nanoid } from 'nanoid';
+import { useQueryClient } from '@tanstack/react-query';
+import { CardService } from '@/services/CardService';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger, DialogClose } from '@/components/ui/dialog';
 
 // Import eBay scraper utilities
 import { 
@@ -88,141 +94,154 @@ interface CardImageProps {
   className?: string;
 }
 
-// ENHANCED: Improved CardImage component with better error handling
-const CardImage = ({ src, alt, className = "" }: CardImageProps) => {
-  const [error, setError] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [imageSrc, setImageSrc] = useState<string>('');
+// Helper function to enhance image URLs for better resolution
+const enhanceImageUrl = (url: string): string => {
+  if (!url || typeof url !== 'string') return '';
   
-  useEffect(() => {
-    // Reset states when src changes
-    setError(false);
-    setLoading(true);
-    
-    // Process the image URL
-    if (!src) {
-      setError(true);
-      setLoading(false);
-      return;
+  try {
+    // Convert webp to jpg (ebay images often work better as jpg)
+    if (url.endsWith('.webp')) {
+      url = url.replace('.webp', '.jpg');
     }
     
-    // Clean up and verify URL
+    // Ensure HTTPS
+    if (url.startsWith('http:')) {
+      url = url.replace('http:', 'https:');
+    }
+    
+    // Handle relative URLs
+    if (url.startsWith('/')) {
+      url = `https://www.ebay.com${url}`;
+    }
+    
+    // Enhance eBay image URLs to get higher resolution versions
+    if (url.includes('i.ebayimg.com')) {
+      // Replace various size indicators with larger versions
+      url = url
+        .replace('s-l64', 's-l500')
+        .replace('s-l96', 's-l500')
+        .replace('s-l140', 's-l500')
+        .replace('s-l225', 's-l500')
+        .replace('s-l300', 's-l500');
+    }
+    
+    // Add cache busting for retries - use a single query parameter
+    const separator = url.includes('?') ? '&' : '?';
+    url = `${url}${separator}t=${Date.now()}`;
+    
+    return url;
+  } catch (e) {
+    console.error('Error enhancing image URL:', e);
+    return url; // Return original URL if enhancement fails
+  }
+};
+
+// Simple and resilient card image component
+const CardImage = ({ src, alt, className = "" }: CardImageProps) => {
+  const [error, setError] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [retries, setRetries] = useState(0);
+  const [imageSrc, setImageSrc] = useState<string>('');
+  const originalSrc = useRef<string>(src || '');
+  
+  // Use a reliable fallback image
+  const fallbackImage = 'https://placehold.co/300x420?text=No+Image';
+  
+  // Helper to enhance and add params using URL API
+  const buildImageUrl = (base: string, retryNum = 0) => {
     try {
-      let processedUrl = src;
-      
-      // Handle eBay common image formats
-      if (src.includes('i.ebayimg.com')) {
-        // Replace small thumbnails with larger images
-        processedUrl = src
-          .replace('s-l64', 's-l500')
-          .replace('s-l96', 's-l500')
-          .replace('s-l140', 's-l500')
-          .replace('s-l225', 's-l500')
-          .replace('s-l300', 's-l500');
+      // Enhance the URL (webp->jpg, https, etc)
+      let enhanced = enhanceImageUrl(base);
+      // Use URL API for param manipulation
+      const urlObj = new URL(enhanced, window.location.origin);
+      if (retryNum > 0) {
+        urlObj.searchParams.set('retry', retryNum.toString());
+      } else {
+        urlObj.searchParams.delete('retry');
       }
-      
-      // Convert relative URLs to absolute if needed
-      if (processedUrl.startsWith('/')) {
-        processedUrl = `https://www.ebay.com${processedUrl}`;
-      }
-      
-      // Verify URL is valid
-      try {
-        new URL(processedUrl);
-        setImageSrc(processedUrl);
-      } catch (e) {
-        console.error("Invalid URL:", processedUrl);
-        setError(true);
-        setLoading(false);
+      urlObj.searchParams.set('t', Date.now().toString());
+      // If the original src was absolute, preserve it
+      if (/^https?:\/\//.test(base)) {
+        return urlObj.href;
+      } else {
+        // For relative URLs, remove origin
+        return urlObj.pathname + urlObj.search;
       }
     } catch (e) {
-      console.error("Error processing image URL:", e);
+      // Fallback to original
+      return base;
+    }
+  };
+  
+  // When the src prop changes, reset our state and enhance the URL
+  useEffect(() => {
+    if (src) {
+      setError(false);
+      setLoaded(false);
+      setRetries(0);
+      originalSrc.current = src;
+      setImageSrc(buildImageUrl(src));
+    } else {
       setError(true);
-      setLoading(false);
     }
   }, [src]);
   
+  // Handle image load error with retries
   const handleError = () => {
-    console.error("Error loading image:", imageSrc);
-    setError(true);
-    setLoading(false);
+    console.error(`Error loading image (attempt ${retries + 1}):`, imageSrc);
+    if (retries < 2) {
+      setRetries(retries + 1);
+      setImageSrc(buildImageUrl(originalSrc.current, retries + 1));
+    } else {
+      // After 3 failures, show fallback
+      console.error('Failed to load image after 3 attempts:', src);
+      setError(true);
+    }
   };
   
-  const handleLoad = () => {
-    setLoading(false);
-  };
-  
-  // Default placeholder image
-  const placeholderImage = "https://via.placeholder.com/300?text=No+Image";
-  
-  if (error || !imageSrc) {
+  // If there's no source or an error occurred, show the fallback
+  if (!src || error) {
     return (
-      <div className={`overflow-hidden rounded-lg bg-gray-100 ${className}`}>
-        <img 
-          src={placeholderImage} 
-          alt={alt || "No image available"} 
-          className="h-full w-full object-contain"
+      <div className={`relative overflow-hidden rounded-lg bg-gray-100 ${className}`}>
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-100">
+          <ImageOff className="h-10 w-10 text-gray-400 mb-2" />
+          <span className="text-sm text-gray-500">{alt || "Image Unavailable"}</span>
+        </div>
+        <img
+          src={fallbackImage}
+          alt={alt || "Card Image"}
+          className="w-full h-full object-cover opacity-60"
+          onLoad={() => console.log("Fallback image loaded successfully")}
+          onError={() => console.error("Even fallback image failed to load")}
         />
       </div>
     );
   }
-  
+
   return (
-    <div className={`overflow-hidden rounded-lg ${className} relative`}>
-      {loading && (
+    <div className={`relative overflow-hidden rounded-lg bg-gray-100 ${className}`}>
+      {/* Always visible loading spinner until image loads */}
+      {!loaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+          <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
         </div>
       )}
-      <img 
-        src={imageSrc} 
-        alt={alt || "Card image"} 
-        className={`h-full w-full object-contain ${loading ? 'opacity-0' : 'opacity-100 transition-opacity duration-300'}`}
+      
+      <img
+        src={imageSrc}
+        alt={alt || "Card"}
+        className={`w-full h-full object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+        onLoad={() => {
+          console.log('Image loaded successfully:', imageSrc);
+          setLoaded(true);
+        }}
         onError={handleError}
-        onLoad={handleLoad}
       />
     </div>
   );
 };
 
 // Helper functions
-/**
- * Generate mock listings for testing
- */
-function generateMockListings(targetCard: TargetCard): ScrapedListing[] {
-  const { playerName, year, cardSet } = targetCard;
-  const mockListings: ScrapedListing[] = [];
-  
-  // Generate 20 mock listings with random prices over the last 90 days
-  const today = new Date();
-  
-  for (let i = 0; i < 20; i++) {
-    const daysAgo = Math.floor(Math.random() * 90);
-    const saleDate = new Date(today);
-    saleDate.setDate(today.getDate() - daysAgo);
-    
-    // Random price between $50 and $500
-    const price = Math.round((50 + Math.random() * 450) * 100) / 100;
-    
-    mockListings.push({
-      title: `${year} ${playerName} ${cardSet} Card #123 ${Math.random() > 0.5 ? 'PSA 10' : 'BGS 9.5'}`,
-      price: price,
-      shipping: Math.random() > 0.7 ? 0 : 4.99,
-      totalPrice: price + (Math.random() > 0.7 ? 0 : 4.99),
-      date: saleDate.toISOString(),
-      dateSold: saleDate.toISOString().split('T')[0],
-      url: 'https://example.com/listing',
-      imageUrl: 'https://via.placeholder.com/150',
-      source: 'Mock Data'
-    });
-  }
-  
-  // Sort by date, newest first
-  return mockListings.sort((a, b) => 
-    new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
-}
-
 /**
  * Extract listings from grouped results
  */
@@ -283,11 +302,14 @@ interface CardVariation {
 // Add imports
 import { API_URL } from "@/lib/firebase/config";
 
+console.log("[MarketAnalyzerPage] API_URL:", API_URL);
+
 export default function MarketAnalyzerPage() {
   const { user } = useAuth();
   const { isAdmin } = useUserSubscription();
-  const { addCard } = useCards();
+  const { addCard } = useCards(); // still available elsewhere
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   
   // Form state
   const [playerName, setPlayerName] = useState("");
@@ -298,6 +320,9 @@ export default function MarketAnalyzerPage() {
   const [grading, setGrading] = useState("any");
   const [isLoading, setIsLoading] = useState(false);
   const [isSearched, setIsSearched] = useState(false);
+  
+  // Add isLoadingAnalysis state
+  const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
   
   // Add search query state for the new single search field
   const [searchQuery, setSearchQuery] = useState("");
@@ -343,6 +368,13 @@ export default function MarketAnalyzerPage() {
 
   // Add the missing recommendation state to fix the error
   const [recommendation, setRecommendation] = useState<{ action: string; reason: string; details: string } | null>(null);
+
+  // ... after other useState declarations near searchQuery state
+  const [imageFile, setImageFile] = useState<File | null>(null);
+
+  // Prompt to complete details
+  const [fixDialogOpen, setFixDialogOpen] = useState(false);
+  const [draftCard, setDraftCard] = useState<any | null>(null);
 
   // Process scraped listings using our utility functions
   const processScrapedListings = (scrapedListings: ScrapedListing[], targetCard: TargetCard) => {
@@ -454,8 +486,11 @@ export default function MarketAnalyzerPage() {
     // Sort variations by number of listings (most common first)
     const sortedVariations = variationOptions.sort((a, b) => b.count - a.count);
     
+    // Merge duplicates by title to avoid splitting the same card across groups
+    const mergedVariations = mergeDuplicateVariations(sortedVariations);
+    
     console.log("Setting cardVariations and analysis step to 'validate'");
-    setCardVariations(sortedVariations);
+    setCardVariations(mergedVariations);
     setIsLoading(false);
     setIsSearched(true);
     setAnalysisStep('validate'); // Move to validation step
@@ -613,167 +648,97 @@ export default function MarketAnalyzerPage() {
     return sum / listings.length;
   };
   
-  // Helper function to extract a variation type from a listing title
-  const extractVariationType = (listing: ScrapedListing): string => {
-    if (!listing || !listing.title) return '';
-    
-    const title = listing.title.toLowerCase();
-    const gradeRegex = /(psa|bgs|sgc|cgc)\s*([\d\.]+)/i;
-    const gradeMatch = title.match(gradeRegex);
-    
-    // Variation keywords to check for
-    const variationKeywords = [
-      { term: 'refractor', label: 'Refractor' },
-      { term: 'parallel', label: 'Parallel' },
-      { term: 'preview', label: 'Preview' },
-      { term: 'canvas', label: 'Canvas' },
-      { term: 'optic', label: 'Optic' },
-      { term: 'press proof', label: 'Press Proof' },
-      { term: 'auto', label: 'Autograph' },
-      { term: 'autograph', label: 'Autograph' },
-      { term: 'patch', label: 'Patch' },
-      { term: 'jersey', label: 'Jersey' },
-      { term: 'relic', label: 'Relic' },
-      { term: 'negative', label: 'Negative' },
-      { term: 'holo', label: 'Holo' },
-      { term: 'die cut', label: 'Die Cut' },
-      { term: 'disco', label: 'Disco' },
-      { term: 'mosaic', label: 'Mosaic' },
-      { term: 'prizm', label: 'Prizm' },
-      { term: 'rookie', label: 'Rookie' },
-      { term: 'rc', label: 'Rookie' },
-      { term: 'insert', label: 'Insert' },
-      { term: 'presentations', label: 'Presentations' },
-      { term: 'debut', label: 'Debut' }
-    ];
-    
-    // Color variations
-    const colorKeywords = [
-      { term: 'gold', label: 'Gold' },
-      { term: 'silver', label: 'Silver' },
-      { term: 'blue', label: 'Blue' },
-      { term: 'red', label: 'Red' },
-      { term: 'green', label: 'Green' },
-      { term: 'yellow', label: 'Yellow' },
-      { term: 'pink', label: 'Pink' },
-      { term: 'purple', label: 'Purple' },
-      { term: 'orange', label: 'Orange' },
-      { term: 'black', label: 'Black' },
-      { term: 'white', label: 'White' }
-    ];
-    
-    // Start building the comprehensive card description
-    let result = '';
-    
-    // Extract player name from title if not provided
-    if (playerName) {
-      result = playerName;
-    } else {
-      // Try to extract player name from the title (first 2-3 words that aren't a year)
-      const words = title.split(' ');
-      const yearPattern = /^(19|20)\d{2}$/;
-      const nameWords = [];
-      
-      for (let i = 0; i < Math.min(4, words.length); i++) {
-        if (!yearPattern.test(words[i])) {
-          nameWords.push(words[i]);
-          if (nameWords.length >= 2) break;
-        }
-      }
-      
-      if (nameWords.length > 0) {
-        result = nameWords.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-      }
-    }
-    
-    // Add year if available or try to extract it
-    if (cardYear) {
-      result += ` ${cardYear}`;
-    } else {
-      // Try to extract year from title
-      const yearMatch = title.match(/(19|20)\d{2}/);
-      if (yearMatch) {
-        result += ` ${yearMatch[0]}`;
-      }
-    }
-    
-    // Add card set if available
-    if (cardSet) {
-      result += ` ${cardSet}`;
-    } else {
-      // Try to extract common card set names
-      const commonSets = ['Prizm', 'Mosaic', 'Select', 'Optic', 'Donruss', 'Hoops', 'Chronicles', 'Impeccable', 'Flawless', 'Origins'];
-      for (const set of commonSets) {
-        if (title.toLowerCase().includes(set.toLowerCase())) {
-          result += ` ${set}`;
-          break;
-        }
-      }
-    }
-    
-    // Add card number if available
-    if (cardNumber) {
-      result += ` #${cardNumber}`;
-    } else {
-      // Try to find card number in the title
-      const cardNumMatch = title.match(/#(\d+)/);
-      if (cardNumMatch) {
-        result += ` #${cardNumMatch[1]}`;
-      }
-    }
-    
-    // Add special inserts, variations, and parallels
-    let foundVariation = false;
-    for (const {term, label} of variationKeywords) {
-      if (title.includes(term)) {
-        result += ` ${label}`;
-        foundVariation = true;
-        break; // Only add the first variation type found
-      }
-    }
-    
-    // Add color variations
-    let foundColor = false;
-    for (const {term, label} of colorKeywords) {
-      if (title.includes(term)) {
-        result += ` ${label}`;
-        foundColor = true;
-        break; // Only add the first color found
-      }
-    }
-    
-    // Add grading information at the end if present
-    if (gradeMatch) {
-      result += ` - ${gradeMatch[1].toUpperCase()} ${gradeMatch[2]}`;
-    } else {
-      // If grading regex didn't match, then it's either raw or unspecified
-      // Explicitly check for raw, or infer it from the absence of grading terms
-      const isGraded = title.includes('psa') || title.includes('bgs') || 
-                       title.includes('sgc') || title.includes('cgc') || 
-                       title.includes('graded');
-      
-      if (!isGraded) {
-        if (title.includes('raw') || title.includes('ungraded')) {
-          result += ' - Raw';
-        } else if (!title.includes('slab') && !title.includes('grade')) {
-          result += ' - Raw/Ungraded';
-        }
-      }
-    }
-    
-    // If the result is still too generic, use a limited version of the original title
-    if (result.trim().split(' ').length < 3) {
-      return limitTitleLength(listing.title, 60);
-    }
-    
-    return result.trim();
-  };
+  // NEW: Helper to merge duplicate variation entries that share the same title
+  const mergeDuplicateVariations = (variations: Array<{
+    id: string;
+    title: string;
+    originalTitle: string;
+    imageUrl: string;
+    count: number;
+    averagePrice: number;
+    sample: ScrapedListing[];
+    minPrice: number;
+    maxPrice: number;
+  }>) => {
+    const merged = new Map<string, typeof variations[number]>();
 
+    variations.forEach((v) => {
+      const key = v.title.trim().toLowerCase();
+      if (!merged.has(key)) {
+        merged.set(key, { ...v });
+      } else {
+        const existing = merged.get(key)!;
+        const combinedSample = [...existing.sample, ...v.sample];
+        const combinedCount = existing.count + v.count;
+        const combinedMin = Math.min(existing.minPrice, v.minPrice);
+        const combinedMax = Math.max(existing.maxPrice, v.maxPrice);
+        const combinedAvg = calculateAveragePrice(combinedSample);
+
+        merged.set(key, {
+          ...existing,
+          count: combinedCount,
+          averagePrice: combinedAvg,
+          sample: combinedSample.slice(0, 5), // keep sample reasonably small
+          minPrice: combinedMin,
+          maxPrice: combinedMax,
+        });
+      }
+    });
+
+    return Array.from(merged.values());
+  };
+  
   // Helper function to limit title length
   const limitTitleLength = (title: string, maxLength: number): string => {
     if (!title) return '';
     if (title.length <= maxLength) return title;
     return title.substring(0, maxLength) + '...';
+  };
+  
+  const extractVariationType = (listing: ScrapedListing): string => {
+    if (!listing || !listing.title) return '';
+    
+    try {
+      // Attempt to extract meaningful variation information
+      const title = listing.title.toLowerCase();
+      
+      // Check if this is a rookie card
+      if (title.includes('rookie') || title.includes(' rc ') || title.includes(' rc#') || 
+          title.includes('rated rookie') || title.includes('rookie card')) {
+        return 'Rookie Card';
+      }
+      
+      // Look for parallel/variation indicators
+      const parallelPatterns = [
+        { pattern: /\b(gold|silver|bronze|ruby|emerald|sapphire)\b/, name: (match: string): string => `${match.charAt(0).toUpperCase() + match.slice(1)} Parallel` },
+        { pattern: /\b(blue|red|green|purple|yellow|orange|black|white|pink)\b/, name: (match: string): string => `${match.charAt(0).toUpperCase() + match.slice(1)} Parallel` },
+        { pattern: /\b(shimmer|glitter|shine|sparkle|disco)\b/, name: (match: string): string => `${match.charAt(0).toUpperCase() + match.slice(1)} Parallel` },
+        { pattern: /\b(prizm|mosaic|optic|select)\b/, name: (match: string): string => `${match.charAt(0).toUpperCase() + match.slice(1)} Card` },
+        { pattern: /\brefractor\b/, name: (): string => 'Refractor' },
+        { pattern: /\bauto(graph)?\b/, name: (): string => 'Autograph Card' },
+        { pattern: /\bmemo(rabilia)?\b/, name: (): string => 'Memorabilia Card' },
+        { pattern: /\bpatch\b/, name: (): string => 'Patch Card' },
+        { pattern: /\bjersey\b/, name: (): string => 'Jersey Card' },
+        { pattern: /\binscription\b/, name: (): string => 'Inscription Card' },
+        { pattern: /\b(1\/1|one of one)\b/, name: (): string => 'One-of-One Card' },
+        { pattern: /\binsertion\b|\binsert\b/, name: (): string => 'Insert Card' },
+        { pattern: /\bshort print\b|\bsp\b/, name: (): string => 'Short Print Card' }
+      ];
+      
+      for (const { pattern, name } of parallelPatterns) {
+        const match = title.match(pattern);
+        if (match) {
+          return name(match[1] || match[0]);
+        }
+      }
+      
+      // If we couldn't identify a specific variation, keep the truncated title
+      return limitTitleLength(listing.title, 40);
+      
+    } catch (error) {
+      console.error('Error extracting variation type:', error);
+      return listing.title ? limitTitleLength(listing.title, 40) : '';
+    }
   };
   
   // Update price data when time range or selected card changes
@@ -861,88 +826,232 @@ export default function MarketAnalyzerPage() {
     // setGrading("any");
   };
 
-  // Handler for search submission
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setSearchError(null);
+  // Helper function to find the best image from a set of listings
+  const findBestImage = (listings: ScrapedListing[]): string => {
+    // Default fallback image
+    const fallbackImage = 'https://placehold.co/500x700/e1e1e1/4a4a4a?text=No+Image+Available';
     
-    console.log("Starting search with query:", searchQuery);
-    
-    let payload: any = {};
-    
-    // Determine if we're doing a free text search or structured search
-    if (searchQuery.trim()) {
-      console.log("Using free text search with query:", searchQuery);
-      payload = {
-        query: searchQuery,
-        grade: grading
-      };
-    } else {
-      // Traditional structured search
-      if (!playerName.trim()) {
-        setSearchError("Please enter a player name");
-        setIsLoading(false);
-        return;
-      }
-      
-      payload = {
-        playerName,
-        year: cardYear,
-        cardSet,
-        cardNumber,
-        variation: cardVariation,
-        grade: grading,
-        negKeywords: ['lot', 'reprint', 'digital', 'case', 'break']
-      };
+    // Handle no listings case
+    if (!listings || !Array.isArray(listings) || listings.length === 0) {
+      console.log('No listings provided to findBestImage');
+      return fallbackImage;
     }
     
-    console.log("Request payload:", payload);
+    console.log('Finding best image from', listings.length, 'listings');
+    
+    // Try to find a valid image URL
+    for (const listing of listings) {
+      if (listing && listing.imageUrl && typeof listing.imageUrl === 'string') {
+        const url = listing.imageUrl.trim();
+        console.log('Checking image URL:', url);
+        
+        // Basic validation
+        if (url && url !== '' && !url.includes('undefined') && !url.includes('null')) {
+          try {
+            // Just check if it's a valid URL format
+            new URL(url);
+            console.log('Found valid image URL:', url);
+            return enhanceImageUrl(url);
+          } catch (e) {
+            console.log(`Invalid URL format in listing: ${url}`);
+            // Continue to next listing
+          }
+        }
+      }
+    }
+    
+    // If no valid URLs found, return fallback
+    console.log('No valid image URLs found in listings');
+    return fallbackImage;
+  };
+
+  // Modify this to handle types properly
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Prevent empty search
+    if (!searchQuery.trim()) {
+      setSearchError("Please enter a search query.");
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setSearchError("");
+    setResults([]);
+    setCardVariations([]);
     
     try {
-      const response = await fetch(`${API_URL}/scrape-card`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      console.log(`Searching for: ${searchQuery}`);
+
+      // Create search payload
+      const payload: {
+        playerName: string;
+        query: string;
+        negKeywords: string[];
+        grade?: string;
+        conditionFilter?: string;
+      } = {
+        playerName: searchQuery,
+        query: searchQuery,
+        negKeywords: ["lot", "reprint", "digital", "case", "break"],
+      };
+
+      // Add grade if specified
+      if (grading && grading !== "any") {
+        payload.grade = grading;
+      }
+
+      // Add condition filter for ungraded cards
+      if (grading === "ungraded") {
+        payload.conditionFilter = "ungraded";
+        // Add negative keywords for graded cards
+        payload.negKeywords = [
+          ...payload.negKeywords,
+          "PSA",
+          "BGS",
+          "SGC",
+          "CGC",
+          "graded",
+          "slabbed",
+          "beckett",
+        ];
+      }
+
+      // Always use the test server URL when in development
+      console.log('Using API URL:', API_URL);
+      const apiUrl = API_URL;
       
-      // ... rest of the function
+      const response = await fetch(`${apiUrl.replace(/\/$/, '')}/api/text-search`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server responded with ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || "Failed to fetch card data");
+      }
+
+      console.log(`Got ${data.listings?.length || 0} listings from server`);
+      console.log(`Got ${data.groupedListings?.length || 0} variations from server`);
+      
+      // Log a sample listing to inspect
+      if (data.listings && data.listings.length > 0) {
+        console.log('Sample listing:', data.listings[0]);
+      }
+      
+      // Log a sample group to inspect
+      if (data.groupedListings && data.groupedListings.length > 0) {
+        console.log('Sample group:', data.groupedListings[0]);
+      }
+      
+      // Save original listings for future reference
+      originalListings.current = data.listings || [];
+
+      // Process the listings
+      if (data.listings && data.listings.length > 0) {
+        // If the server provides grouped listings, use them directly
+        if (data.groupedListings && data.groupedListings.length > 0) {
+          console.log("Using server-provided grouped listings");
+          
+          // Convert server groupings to our format
+          const variations = data.groupedListings.map((group: any, index: number) => {
+            let imageUrl = group.representativeImageUrl;
+            if (!imageUrl) {
+              imageUrl = findBestImage(group.listings || []);
+            }
+            console.log(`Variation ${index} image:`, imageUrl);
+            
+            return {
+              id: group.id || `variation-${index}`,
+              title: group.title || `Variation ${index + 1}`,
+              originalTitle: group.title || `Variation ${index + 1}`,
+              imageUrl: imageUrl,
+              count: group.count || group.listings?.length || 0,
+              averagePrice: group.averagePrice || calculateAveragePrice(group.listings || []),
+              sample: group.listings?.slice(0, 5) || [],
+              minPrice: Math.min(...(group.listings || []).map((l: any) => l.totalPrice || l.price || 0)),
+              maxPrice: Math.max(...(group.listings || []).map((l: any) => l.totalPrice || l.price || 0))
+            };
+          });
+          
+          const mergedVariations = mergeDuplicateVariations(variations);
+          setCardVariations(mergedVariations);
+          
+          // Use the first variation for initial analysis
+          if (mergedVariations.length > 0) {
+            const bestImageUrl = mergedVariations[0].imageUrl;
+            console.log('Best image URL for first variation:', bestImageUrl);
+            
+            // Create a basic result for the results panel
+            const cardResult: CardResult = {
+              id: nanoid(),
+              playerName: searchQuery,
+              year: "",
+              cardSet: "",
+              grade: grading || "Any",
+              condition: grading === "ungraded" ? "raw" : "graded",
+              averagePrice: mergedVariations[0].averagePrice,
+              lastSold: data.listings[0]?.dateSold || new Date().toISOString().split("T")[0],
+              listings: mergedVariations[0].sample,
+              imageUrl: bestImageUrl,
+              title: mergedVariations[0].title,
+            };
+            
+            setResults([cardResult]);
+          }
+        } else {
+          // Fall back to client-side grouping if server doesn't provide groups
+          console.log("Server didn't provide grouped listings, grouping on client");
+          processScrapedListings(data.listings, {
+            playerName: searchQuery,
+            year: "",
+            cardSet: "",
+            variation: "",
+            grade: grading || "Any"
+          });
+        }
+        
+        setIsSearched(true);
+        setAnalysisStep('validate');
+        
+        // Scroll to results
+        setTimeout(() => {
+          document.getElementById("results")?.scrollIntoView({
+            behavior: "smooth",
+          });
+        }, 500);
+      } else {
+        throw new Error("No listings found");
+      }
     } catch (error) {
-      // ... error handling
+      console.error("Search error:", error);
+      setSearchError(
+        error instanceof Error
+          ? error.message
+          : "An error occurred while searching for card data"
+      );
+      
+      // Clear results and variations on error
+      setResults([]);
+      setCardVariations([]);
+      setPriceData([]);
+      
+      setIsSearched(true);
+      setAnalysisStep('search');
+    } finally {
+      setIsLoading(false);
     }
   };
   
-  // Helper function to generate synthetic price history data for raw cards
-  const generateSyntheticRawCardData = (basePrice: number) => {
-    console.log("Generating synthetic price history data for raw card display");
-    const syntheticData: PriceData[] = [];
-    const today = new Date();
-    
-    // Generate 15 synthetic points over the last 90 days with realistic variations
-    for (let i = 0; i < 15; i++) {
-      const daysAgo = Math.floor(Math.random() * 90); // Random distribution across 90 days
-      const date = new Date(today);
-      date.setDate(today.getDate() - daysAgo);
-      
-      // Add random variation with slight upward trend
-      // For raw cards, price variation is typically less than graded
-      const randomVariation = (Math.random() * 0.12) - 0.05; // -5% to +7%
-      const trendFactor = 1 + (90 - daysAgo) / 90 * 0.02; // Slight upward trend over time (max 2%)
-      
-      syntheticData.push({
-        date: date.toISOString().split('T')[0],
-        price: basePrice * (1 + randomVariation) * trendFactor
-      });
-    }
-    
-    // Sort by date
-    syntheticData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    
-    // Set as price data
-    setPriceData(syntheticData);
-    console.log("Set synthetic price data with 15 points for raw card");
-  };
-
   // Completely rewritten function to handle price history data extraction
   const extractPriceHistory = (listings: ScrapedListing[], isRaw: boolean, avgPrice: number) => {
     console.log("Extracting price history with improved handling", { listingCount: listings.length, isRaw });
@@ -950,17 +1059,17 @@ export default function MarketAnalyzerPage() {
     // Set a minimum number of data points to consider valid
     const MIN_DATA_POINTS = 2;
     
-    // Early fallback to synthetic data if insufficient listings 
+    // Early return if insufficient listings 
     if (!listings || listings.length < MIN_DATA_POINTS) {
-      console.log("Insufficient listings for price history, using synthetic data");
-      generateSyntheticRawCardData(avgPrice);
+      console.log("Insufficient listings for price history");
+      setPriceData([]);
       return;
     }
     
     try {
       // Safe date parsing with multiple fallbacks
       const parseDate = (input: any): string => {
-        if (!input) return generateFallbackDate();
+        if (!input) return new Date().toISOString().split('T')[0];
         
         try {
           // Handle string dates
@@ -983,19 +1092,11 @@ export default function MarketAnalyzerPage() {
           }
           
           // If we're here, we couldn't parse the date
-          return generateFallbackDate();
+          return new Date().toISOString().split('T')[0];
         } catch (error) {
           console.warn("Date parsing error:", error);
-          return generateFallbackDate();
+          return new Date().toISOString().split('T')[0];
         }
-      };
-      
-      // Generate a realistic fallback date (within the last 90 days)
-      const generateFallbackDate = (): string => {
-        const today = new Date();
-        const daysAgo = Math.floor(Math.random() * 90);
-        today.setDate(today.getDate() - daysAgo);
-        return today.toISOString().split('T')[0];
       };
       
       // Extract price points with safe date handling
@@ -1012,7 +1113,7 @@ export default function MarketAnalyzerPage() {
         const dateStr = 
           parseDate(listing.dateSold) || 
           parseDate(listing.date) || 
-          generateFallbackDate();
+          new Date().toISOString().split('T')[0];
         
         pricePoints.push({
           date: dateStr,
@@ -1032,659 +1133,234 @@ export default function MarketAnalyzerPage() {
         console.log(`Using ${pricePoints.length} real data points for price history`);
         setPriceData(pricePoints);
       } else {
-        // Not enough data points after filtering, use synthetic data
-        console.log("Not enough valid price points after filtering, using synthetic data");
-        generateSyntheticRawCardData(avgPrice);
+        // Not enough data points after filtering
+        console.log("Not enough valid price points after filtering");
+        setPriceData([]);
       }
     } catch (error) {
       console.error("Error processing price history:", error);
-      // Always fall back to synthetic data on errors
-      generateSyntheticRawCardData(avgPrice);
+      setPriceData([]);
     }
   };
   
   // Update the analyzeVariation function to use the new extractPriceHistory function
   const analyzeVariation = (variationId: string) => {
-    console.log("Starting analysis for variation:", variationId);
+    setIsLoadingAnalysis(true);
+    setSearchError(null);
     
+    // Find the selected variation
     const selectedVariation = cardVariations.find(v => v.id === variationId);
+    
     if (!selectedVariation) {
-      console.error("Selected variation not found:", variationId);
-      setSearchError("Error: Selected card variation not found.");
+      console.error('Selected variation not found:', variationId);
+      setSearchError('Error loading variation data');
+      setIsLoadingAnalysis(false);
       return;
     }
     
-    // Get the full list of listings for this variation
-    const variationIndex = parseInt(variationId.split('-')[1]);
-    const groupedListings = groupListingsByTitleSimilarity(originalListings.current);
-    let sanitizedListings: any[] = [];
+    console.log('Analyzing variation:', selectedVariation.title);
+    console.log('Variation image URL:', selectedVariation.imageUrl);
     
-    if (variationIndex < groupedListings.length) {
-      sanitizedListings = groupedListings[variationIndex];
-    }
+    // Create a card result for the selected variation
+    const cardResult: CardResult = {
+      id: nanoid(),
+      playerName: searchQuery,
+      year: "",
+      cardSet: "",
+      grade: grading,
+      condition: grading === "ungraded" ? "raw" : "graded",
+      variation: selectedVariation.title,
+      averagePrice: selectedVariation.averagePrice,
+      lastSold: selectedVariation.sample[0]?.dateSold || new Date().toISOString().split("T")[0],
+      listings: selectedVariation.sample,
+      imageUrl: selectedVariation.imageUrl,
+      title: selectedVariation.title
+    };
+    
+    console.log('Card result created with image URL:', cardResult.imageUrl);
 
-    const validListings = sanitizedListings.filter(
-      (listing: any) => listing.price && listing.price > 0
-    ).sort((a: any, b: any) => {
-      // Sort by date if available, newest first
-      if (a.dateSold && b.dateSold) {
-        return new Date(b.dateSold).getTime() - new Date(a.dateSold).getTime();
-      }
-      return 0;
+    // Set the selected card and extract price data for the variation
+    setSelectedCard(cardResult);
+    
+    // Generate price history data points - properly handling type issues
+    const isRaw = grading === "ungraded";
+    extractPriceHistory(selectedVariation.sample, isRaw, selectedVariation.averagePrice);
+    
+    // Calculate market metrics
+    const metrics = calculateMarketMetrics(selectedVariation.sample);
+    setMarketMetrics(metrics);
+    
+    // Calculate market scores based on metrics
+    const volatilityScore = Math.max(0, Math.min(100, 50 - (metrics.volatility * 100)));
+    const trendScore = Math.max(0, Math.min(100, 50 + (metrics.trend * 50)));
+    
+    // Use the salesCount from metrics instead of salesPerDay
+    const demandScore = metrics.salesCount > 10 ? 75 : (metrics.salesCount > 5 ? 50 : 25);
+    
+    setMarketScores({
+      volatility: Math.round(volatilityScore),
+      trend: Math.round(trendScore),
+      demand: Math.round(demandScore)
     });
     
-    if (validListings.length === 0) {
-      console.error("No valid listings found for analysis");
-      setSearchError("Error: No valid listings found for analysis.");
-      return;
-    }
+    // Generate price predictions based on current metrics
+    const pricePredictions = predictFuturePrices(selectedVariation.sample, selectedVariation.averagePrice);
+    setPredictions(pricePredictions);
     
-    setMarketScores({ volatility: 0, trend: 0, demand: 0 });
-    setPredictions({ days30: 0, days60: 0, days90: 0 });
+    // Generate recommendation based on metrics
+    const rec = generateRecommendation(metrics);
+    setRecommendation(rec);
     
-    try {
-      // Get the current average price
-      const currentPrice = calculateAveragePrice(validListings.slice(0, 3));
-      
-      // Convert validListings to GroupedListing[] format for analysis
-      const groupedValidListings: GroupedListing[] = validListings.map(listing => ({
-        ...listing,
-        totalPrice: listing.totalPrice || listing.price || 0
-      }));
-      
-      // Analyze sales data
-      const salesAnalysis = analyzeSalesData(groupedValidListings);
-      
-      // Calculate market metrics
-      const metrics = calculateMarketMetrics(groupedValidListings);
-      setMarketMetrics(metrics);
-      
-      // Calculate market scores
-      if (metrics) {
-        setMarketScores({
-          volatility: metrics.volatility,
-          trend: metrics.trend,
-          demand: metrics.demand
-        });
-        
-        // Calculate overall market score
-        const score = calculateOverallMarketScore(metrics);
-        setOverallMarketScore(score);
-      }
-      
-      // Predict future prices
-      const isRawCard = selectedVariation.title.toLowerCase().includes('raw') ||
-                       (grading.toLowerCase() === 'raw');
-      const predictions = predictFuturePrices(groupedValidListings, currentPrice, isRawCard);
-      setPredictions(predictions);
-      
-      // Generate recommendation
-      const recommendation = generateRecommendation(metrics, 0); // ROI set to 0 for now, can be calculated if we track purchase price
-      setRecommendation(recommendation);
-      
-      // Generate price data for chart with improved date handling
-      try {
-        console.log("Creating price history data with robust date handling");
-        
-        // Create a clean dataset for the price chart, focusing only on valid entries 
-        let pricePoints: {date: string, price: number}[] = [];
-        
-        // New more robust date parsing function
-        const parseDate = (dateStr: any): string | null => {
-          if (!dateStr) return null;
-          
-          try {
-            // If it's already a string in ISO format with T, just extract the date part
-            if (typeof dateStr === 'string' && dateStr.includes('T')) {
-              return dateStr.split('T')[0];
-            }
-            
-            // Try to convert other formats to a Date object
-            const date = new Date(dateStr);
-            if (!isNaN(date.getTime())) {
-              return date.toISOString().split('T')[0];
-            }
-            
-            return null;
-          } catch {
-            return null;
-          }
-        };
-        
-        // Extract and validate data points from all listings
-        for (const listing of validListings) {
-          // Get the price (use totalPrice if available, otherwise price)
-          const price = listing.totalPrice || listing.price || 0;
-          
-          // Skip listings with invalid prices
-          if (price <= 0) continue;
-          
-          // Try multiple date fields and formats - ensure we always get a string
-          let dateStr = parseDate(listing.dateSold) || parseDate(listing.date) || parseDate(new Date()) || new Date().toISOString().split('T')[0];
-          
-          // Always add the data point (never skip due to date issues)
-          pricePoints.push({
-            date: dateStr,
-            price
-          });
-        }
-        
-        // Ensure we have the data sorted by date
-        pricePoints.sort((a, b) => {
-          try {
-            return new Date(a.date).getTime() - new Date(b.date).getTime();
-          } catch {
-            return 0;
-          }
-        });
-        
-        // If we have enough data, use it; otherwise, create synthetic data
-        if (pricePoints.length >= 1) {
-          setPriceData(pricePoints);
-        } else {
-          // Generate synthetic data if we don't have enough real data
-          console.log("Generating synthetic data for display");
-          const syntheticData = generateSyntheticData(currentPrice);
-          setPriceData(syntheticData);
-        }
-      } catch (error) {
-        console.error("Error generating price data:", error);
-        // Create basic fallback data even if there's an error
-        const fallbackData = generateSyntheticData(currentPrice);
-        setPriceData(fallbackData);
-      }
-      
-      // IMPORTANT: Don't fetch graded versions automatically
-      // Reset grading profit data for now - will load on demand
-      setPsa9Data(null);
-      setPsa10Data(null);
-      setGradingProfitData(null);
-      setIsLoadingGradedData(false);
-      
-      // Set the selectedCard state with all the data
-      setSelectedCard({
-        ...selectedVariation,
-        playerName, 
-        year: cardYear,
-        cardSet,
-        grade: grading,
-        condition: grading, // Use grading as condition since it's the same for our purposes
-        averagePrice: currentPrice,
-        totalSales: validListings.length,
-        listings: validListings,
-        lastSold: new Date().toISOString() // Add the required lastSold property with current date
-      } as unknown as CardResult); // Use unknown to bypass type checking
-      
-      // Analysis complete
-      console.log("Analysis completed for variation:", variationId);
-      
-    } catch (error) {
-      console.error("Error analyzing card data:", error);
-      setSearchError("Error analyzing card data. Please try again.");
-    }
+    // Calculate the overall market score
+    const overall = calculateOverallMarketScore(metrics);
+    setOverallMarketScore(overall);
+    
+    // Move to analysis step
+    setAnalysisStep('analyze');
+    setIsLoadingAnalysis(false);
+    
+    // Scroll to analysis
+    setTimeout(() => {
+      document.getElementById("analysis")?.scrollIntoView({
+        behavior: "smooth",
+      });
+    }, 100);
   };
 
-  // Add a new function to load graded versions on demand
-  const loadGradedVersions = () => {
+  // Add the missing loadGradedVersions function (simplified version)
+  const loadGradedVersions = async () => {
     if (!selectedCard) return;
     
-    // Only proceed if the card is raw
-    const isRawCard = selectedCard.title?.toLowerCase().includes('raw') ||
-                     (grading.toLowerCase() === 'raw');
-    
-    if (!isRawCard) {
-      console.log("Cannot load graded versions for already graded card");
-      return;
-    }
-    
     setIsLoadingGradedData(true);
-    
-    // Now fetch the graded versions
-    fetchGradedVersions(selectedCard);
-  };
-
-  // Add function to fetch graded versions of the card
-  const fetchGradedVersions = async (rawCard: CardResult | CardVariation) => {
-    setIsLoadingGradedData(true);
+    setGradingProfitData(null);
     
     try {
-      // If using free-form search, use that as the base
-      if (searchQuery) {
-        // Get raw card price from the selected card
-        const rawListings = 'listings' in rawCard ? rawCard.listings : [];
-        const rawPrice = calculateAveragePrice(
-          rawListings.filter(l => l.price > 0).slice(0, 5) || []
-        );
+      // Create search payload for graded versions
+      const payload = {
+        playerName: searchQuery,
+        query: `${searchQuery} PSA 9 PSA 10`,
+        negKeywords: ["lot", "reprint", "digital", "case", "break", "raw", "ungraded"],
+        grade: "PSA 9 PSA 10"
+      };
 
-        // PSA 9 and PSA 10 queries
-        const psa9Params = {
-          query: searchQuery + ' PSA 9',
-          negKeywords: ['lot', 'reprint', 'digital', 'case', 'break']
-        };
-        const psa10Params = {
-          query: searchQuery + ' PSA 10',
-          negKeywords: ['lot', 'reprint', 'digital', 'case', 'break']
-        };
+      // Use the same API endpoint but with different parameters
+      const apiUrl = API_URL || 'http://localhost:9876';
+      const response = await fetch(`${apiUrl}/scrape-card`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
 
-        // Function to fetch data and handle errors (same as before)
-        const fetchGradedData = async (params: any) => {
-          try {
-            const response = await fetch(`${API_URL}/scrape`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(params)
-            });
-            type ScrapeResponse = {
-              success: boolean;
-              listings: ScrapedListing[];
-              count: number;
-            };
-            const data = await response.json() as ScrapeResponse;
-            if (data && Array.isArray(data.listings)) {
-              const listings = data.listings;
-              const validListings = listings
-                .filter((l: any) => l.price && l.price > 0)
-                .sort((a: any, b: any) => {
-                  if (a.dateSold && b.dateSold) {
-                    return new Date(b.dateSold).getTime() - new Date(a.dateSold).getTime();
-                  }
-                  return 0;
-                });
-              if (validListings.length > 0) {
-                const avgPrice = calculateAveragePrice(validListings.slice(0, 5));
-                return {
-                  averagePrice: avgPrice,
-                  listings: validListings,
-                  count: validListings.length
-                };
-              }
-            }
-            return null;
-          } catch (error) {
-            return null;
-          }
-        };
-
-        // Fetch PSA 9 and PSA 10 data in parallel
-        const [psa9Result, psa10Result] = await Promise.all([
-          fetchGradedData(psa9Params),
-          fetchGradedData(psa10Params)
-        ]);
-        setPsa9Data(psa9Result);
-        setPsa10Data(psa10Result);
-        // ... rest of the logic for profit calculation remains unchanged ...
-        // (copy from previous implementation)
-        const psa9Price = psa9Result ? psa9Result.averagePrice : (rawPrice * 2.5);
-        const psa10Price = psa10Result ? psa10Result.averagePrice : (rawPrice * 5);
-        const gradingCost = 50; // PSA grading cost
-        const totalCosts = gradingCost + 15 + 5; // grading + shipping to grader + shipping to buyer
-        const ebayFeePercent = 0.13;
-        const psa9ProfitAfterCosts = (psa9Price * (1 - ebayFeePercent)) - (rawPrice + totalCosts);
-        const psa10ProfitAfterCosts = (psa10Price * (1 - ebayFeePercent)) - (rawPrice + totalCosts);
-        const profitData = calculateGradingProfit(
-          rawPrice,
-          psa9Price,
-          psa10Price
-        );
-        const enhancedProfitData = {
-          ...profitData,
-          rawPrice: rawPrice,
-          psa9Price: psa9Price,
-          psa10Price: psa10Price,
-          psa9ProfitAfterCosts,
-          psa10ProfitAfterCosts,
-          recommendation: psa10ProfitAfterCosts > 20 ? 
-            "Grading this card appears profitable, especially if it receives a PSA 10 grade." :
-            psa9ProfitAfterCosts > 10 ?
-            "Grading may be worthwhile even with a PSA 9 grade." :
-            "Grading costs likely exceed potential profit. Consider keeping raw."
-        };
-        setGradingProfitData(enhancedProfitData);
-        console.log("Set grading profit data:", enhancedProfitData);
-        setIsLoadingGradedData(false);
-        return;
+      if (!response.ok) {
+        throw new Error(`Server responded with ${response.status}`);
       }
-      // ... fallback to old logic if searchQuery is not present ...
-      // Only proceed if we have the necessary parameters
-      if (!playerName || !cardYear || !cardSet) {
-        console.error("Missing required parameters for graded search");
-        setIsLoadingGradedData(false);
-        return;
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || "Failed to fetch graded card data");
       }
-      
-      // Get raw card price from the selected card
-      const rawListings = 'listings' in rawCard ? rawCard.listings : [];
-      const rawPrice = calculateAveragePrice(
-        rawListings.filter(l => l.price > 0).slice(0, 5) || []
+
+      // Process the listings to separate PSA 9 and PSA 10
+      const psa9Listings = data.listings.filter((listing: ScrapedListing) => 
+        listing.title?.toLowerCase().includes('psa 9')
       );
       
-      console.log("Raw card price for grading calculator:", rawPrice);
+      const psa10Listings = data.listings.filter((listing: ScrapedListing) => 
+        listing.title?.toLowerCase().includes('psa 10')
+      );
+
+      // Calculate average prices
+      const psa9Price = calculateAveragePrice(psa9Listings);
+      const psa10Price = calculateAveragePrice(psa10Listings);
+      const rawPrice = selectedCard.averagePrice;
+
+      // Calculate potential profits
+      const psa9Profit = psa9Price - rawPrice;
+      const psa10Profit = psa10Price - rawPrice;
+
+      // Calculate profits after grading costs
+      const gradingCost = 30; // PSA grading cost
+      const psa9ProfitAfterCosts = psa9Profit - gradingCost;
+      const psa10ProfitAfterCosts = psa10Profit - gradingCost;
+
+      // Generate recommendation
+      let recommendation = "Based on current market data, ";
       
-      // Create params for PSA 9 search
-      const psa9Params = {
-        playerName,
-        year: cardYear,
-        cardSet,
-        cardNumber,
-        grade: 'PSA 9',
-        condition: 'PSA 9',
-        negKeywords: ['lot', 'reprint', 'digital', 'case', 'break']
-      };
-      
-      // Create params for PSA 10 search
-      const psa10Params = {
-        playerName,
-        year: cardYear,
-        cardSet,
-        cardNumber,
-        grade: 'PSA 10',
-        condition: 'PSA 10',
-        negKeywords: ['lot', 'reprint', 'digital', 'case', 'break']
-      };
-      
-      // Function to fetch data and handle errors
-      const fetchGradedData = async (params: any) => {
-        try {
-          console.log("Fetching graded data with params:", params);
-          const response = await fetch(`${API_URL}/scrape`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(params)
-          });
-          
-          // Use type assertion to help TypeScript understand the structure
-          type ScrapeResponse = {
-            success: boolean;
-            listings: ScrapedListing[];
-            count: number;
-          };
-          
-          const data = await response.json() as ScrapeResponse;
-          
-          if (data && Array.isArray(data.listings)) {
-            const listings = data.listings;
-            console.log(`Got ${listings.length} listings for ${params.grade}`);
-            
-            if (listings.length > 0) {
-              // Calculate average price from last sales
-              const validListings = listings
-                .filter((l: any) => l.price && l.price > 0)
-                .sort((a: any, b: any) => {
-                  if (a.dateSold && b.dateSold) {
-                    return new Date(b.dateSold).getTime() - new Date(a.dateSold).getTime();
-                  }
-                  return 0;
-                });
-                
-              if (validListings.length > 0) {
-                const avgPrice = calculateAveragePrice(validListings.slice(0, 5));
-                console.log(`Average price for ${params.grade}: $${avgPrice}`);
-                return {
-                  averagePrice: avgPrice,
-                  listings: validListings,
-                  count: validListings.length
-                };
-              }
-            }
-          }
-          
-          // If we get here, we couldn't get valid data
-          console.log(`No valid listings found for ${params.grade}`);
-          return null;
-        } catch (error) {
-          console.error(`Error fetching ${params.grade} data:`, error);
-          return null;
-        }
-      };
-      
-      // Fetch PSA 9 and PSA 10 data in parallel
-      const [psa9Result, psa10Result] = await Promise.all([
-        fetchGradedData(psa9Params),
-        fetchGradedData(psa10Params)
-      ]);
-      
-      setPsa9Data(psa9Result);
-      setPsa10Data(psa10Result);
-      
-      // If we don't have real data, use estimates based on raw price
-      const psa9Price = psa9Result ? psa9Result.averagePrice : (rawPrice * 2.5);
-      const psa10Price = psa10Result ? psa10Result.averagePrice : (rawPrice * 5);
-      
-      console.log("PSA 9 Price:", psa9Price);
-      console.log("PSA 10 Price:", psa10Price);
-      
-      // Calculate grading profit with the data we have
-      const gradingCost = 50; // PSA grading cost
-      const totalCosts = gradingCost + 15 + 5; // grading + shipping to grader + shipping to buyer
-      const ebayFeePercent = 0.13;
-      
-      const psa9ProfitAfterCosts = (psa9Price * (1 - ebayFeePercent)) - (rawPrice + totalCosts);
-      const psa10ProfitAfterCosts = (psa10Price * (1 - ebayFeePercent)) - (rawPrice + totalCosts);
-      
-      const profitData = calculateGradingProfit(
+      if (psa9ProfitAfterCosts > 0 && psa10ProfitAfterCosts > 0) {
+        recommendation += "grading this card could be profitable. The potential return on investment is positive for both PSA 9 and PSA 10 grades.";
+      } else if (psa9ProfitAfterCosts > 0) {
+        recommendation += "grading this card could be profitable if you expect a PSA 9 grade. PSA 10 grades may not be profitable after grading costs.";
+      } else if (psa10ProfitAfterCosts > 0) {
+        recommendation += "grading this card could be profitable if you expect a PSA 10 grade. PSA 9 grades may not be profitable after grading costs.";
+      } else {
+        recommendation += "grading this card may not be profitable at current market prices. Consider holding the raw card or waiting for market conditions to improve.";
+      }
+
+      // Set the grading profit data
+      setGradingProfitData({
         rawPrice,
         psa9Price,
-        psa10Price
-      );
-      
-      // Add the profit after costs fields which the UI expects
-      const enhancedProfitData = {
-        ...profitData,
-        rawPrice: rawPrice,
-        psa9Price: psa9Price,
-        psa10Price: psa10Price,
+        psa10Price,
+        psa9Profit,
+        psa10Profit,
         psa9ProfitAfterCosts,
         psa10ProfitAfterCosts,
-        recommendation: psa10ProfitAfterCosts > 20 ? 
-          "Grading this card appears profitable, especially if it receives a PSA 10 grade." :
-          psa9ProfitAfterCosts > 10 ?
-          "Grading may be worthwhile even with a PSA 9 grade." :
-          "Grading costs likely exceed potential profit. Consider keeping raw."
-      };
-      
-      setGradingProfitData(enhancedProfitData);
-      console.log("Set grading profit data:", enhancedProfitData);
+        recommendation
+      });
+
     } catch (error) {
-      console.error("Error in fetchGradedVersions:", error);
-      
-      // Even if there's an error, provide synthetic data
-      if (rawCard && 'listings' in rawCard) {
-        const rawListings = rawCard.listings;
-        const rawPrice = calculateAveragePrice(
-          rawListings.filter(l => l.price > 0).slice(0, 3) || []
-        );
-        
-        // Create synthetic data with realistic multipliers
-        const psa9Price = rawPrice * 2.5;
-        const psa10Price = rawPrice * 5;
-        
-        const gradingCost = 50;
-        const totalCosts = gradingCost + 15 + 5;
-        const ebayFeePercent = 0.13;
-        
-        const psa9ProfitAfterCosts = (psa9Price * (1 - ebayFeePercent)) - (rawPrice + totalCosts);
-        const psa10ProfitAfterCosts = (psa10Price * (1 - ebayFeePercent)) - (rawPrice + totalCosts);
-        
-        setGradingProfitData({
-          expectedProfit: (psa9Price * 0.6 + psa10Price * 0.2) - rawPrice - totalCosts,
-          roi: ((psa9Price * 0.6 + psa10Price * 0.2) / (rawPrice + totalCosts) - 1) * 100,
-          psa9Profit: psa9Price - rawPrice,
-          psa10Profit: psa10Price - rawPrice,
-          gradingCost,
-          totalCost: rawPrice + totalCosts,
-          expectedValue: psa9Price * 0.6 + psa10Price * 0.2,
-          ebayFee: (psa9Price * 0.6 + psa10Price * 0.2) * ebayFeePercent,
-          rawPrice,
-          psa9Price,
-          psa10Price,
-          psa9ProfitAfterCosts,
-          psa10ProfitAfterCosts,
-          recommendation: "Estimated profit calculation (based on similar cards)"
-        });
-      }
+      console.error("Error loading graded versions:", error);
+      toast.error("Failed to load graded card data. Please try again.");
     } finally {
       setIsLoadingGradedData(false);
     }
   };
   
-  // Add a useEffect that ensures we always have chart data
-  useEffect(() => {
-    // If we already have price data, don't override it
-    if (priceData && priceData.length > 0) {
-      return;
-    }
-    
-    // If we have a selected card but no price data, create synthetic data
-    if (selectedCard && marketMetrics && (!priceData || priceData.length === 0)) {
-      console.log("No price data available, creating fallback synthetic data");
-      
-      const basePrice = marketMetrics.averagePrice || 30;
-      const syntheticData: PriceData[] = [];
-      
-      // Create 10 synthetic data points over the last 30 days
-      for (let i = 0; i < 10; i++) {
-        const today = new Date();
-        const daysAgo = i * 3; // Space out every 3 days
-        const date = new Date(today);
-        date.setDate(today.getDate() - daysAgo);
-        
-        // Add slight random variation to price (±10%)
-        const randomFactor = 0.9 + (Math.random() * 0.2);
-        
-        syntheticData.push({
-          date: date.toISOString().split('T')[0],
-          price: basePrice * randomFactor
-        });
-      }
-      
-      console.log(`Created ${syntheticData.length} synthetic data points as fallback`);
-      setPriceData(syntheticData);
-    }
-  }, [selectedCard, marketMetrics, priceData]);
-  
-  // Add synthetic data generation function that was referenced but missing
-  const generateSyntheticData = (basePrice: number): { date: string; price: number }[] => {
-    const syntheticData: { date: string; price: number }[] = [];
-    const today = new Date();
-    
-    // Generate data points for the last 90 days
-    for (let i = 0; i < 15; i++) {
-      const date = new Date(today.getTime());
-      date.setDate(today.getDate() - (90 - i * 6)); // Spread points over 90 days
-      
-      // Calculate a price with some random variation
-      const randomFactor = 0.95 + (Math.random() * 0.1); // 0.95 to 1.05
-      const price = basePrice * randomFactor;
-      
-      syntheticData.push({
-        date: date.toISOString().split('T')[0],
-        price
-      });
-    }
-    
-    return syntheticData;
-  };
-  
-  // Add function to handle adding card to collection
+  // Add a simplified handleAddToCollection function
   const handleAddToCollection = async () => {
     if (!selectedCard) return;
+    
     // Make sure user is logged in
     if (!user) {
       toast.error("You need to be logged in to add cards to your collection");
       return;
     }
     
-    // Extract initial values from the selected card data
-    let extractedName = "";
-    let extractedYear = "";
-    let extractedSet = "";
-    let extractedCardNumber = "";
-    
-    // Try to extract information from the title
-    const cardTitle = selectedCard.title || '';
-    
-    if (selectedCard.playerName || playerName) {
-      extractedName = selectedCard.playerName || playerName || "";
-    } else if (cardTitle) {
-      // Try to extract player name from the title (usually the first 1-2 words)
-      const titleParts = cardTitle.split(' ');
-      if (titleParts.length >= 2) {
-        // Take first two words as player name if they don't look like a year
-        const firstWord = titleParts[0];
-        const secondWord = titleParts[1];
-        const yearRegex = /^(19|20)\d{2}$/;
-        
-        if (!yearRegex.test(firstWord)) {
-          extractedName = !yearRegex.test(secondWord) ? `${firstWord} ${secondWord}` : firstWord;
-        }
-      }
-    }
-    
-    if (selectedCard.year || cardYear) {
-      extractedYear = selectedCard.year || cardYear || "";
-    } else if (cardTitle) {
-      // Try to extract year from the title (4-digit number starting with 19 or 20)
-      const yearMatch = cardTitle.match(/(19|20)\d{2}/);
-      if (yearMatch) {
-        extractedYear = yearMatch[0];
-      }
-    }
-    
-    if (selectedCard.cardSet || cardSet) {
-      extractedSet = selectedCard.cardSet || cardSet || "";
-    } else if (cardTitle) {
-      // Try to extract card set - this is trickier, but we'll look for common set names
-      const commonSets = ['Prizm', 'Select', 'Mosaic', 'Donruss', 'Optic', 'Topps', 'Chrome', 'Bowman'];
-      for (const setName of commonSets) {
-        if (cardTitle.includes(setName)) {
-          extractedSet = setName;
-          break;
-        }
-      }
-    }
-    
-    if (cardNumber) {
-      extractedCardNumber = cardNumber;
-    } else if (cardTitle) {
-      // Try to extract card number from title
-      const numberMatch = cardTitle.match(/#(\d+)/);
-      if (numberMatch) {
-        extractedCardNumber = numberMatch[1];
-      }
-    }
-    
-    // Always prompt for all required fields to ensure accurate information
-    // Use extracted values as defaults but allow user to confirm or modify
-    const name = window.prompt("Enter the player name for this card:", extractedName) || "";
-    const year = window.prompt("Enter the year for this card:", extractedYear) || "";
-    const set = window.prompt("Enter the card set for this card:", extractedSet) || "";
-    const number = window.prompt("Enter the card number:", extractedCardNumber) || "";
-    
-    // If any required field is missing, abort
-    if (!name || !year || !set || !number) {
-      toast.error("Player name, year, card set, and card number are required to add a card.");
-      return;
-    }
-    
     try {
       // Create a card object from the selected card data
       const newCard = {
-        playerName: name,
-        year: year,
-        cardSet: set,
-        cardNumber: number,
+        playerName: selectedCard.playerName || searchQuery,
+        year: selectedCard.year || "",
+        cardSet: selectedCard.cardSet || "",
+        cardNumber: cardNumber || "",
         condition: selectedCard.grade || 'Raw',
         imageUrl: selectedCard.imageUrl || '',
-        currentValue: marketMetrics?.averagePrice || 0,
+        currentValue: selectedCard.averagePrice || 0,
         pricePaid: parseFloat(pricePaid || '0') || 0,
         variation: selectedCard.variation || '',
-        ownerId: user.uid, // Add the ownerId field
-        tags: [] // Empty tags array as default
+        ownerId: user.uid,
+        tags: [] // Add empty tags array
       };
-      // Add the card to the collection
-      await addCard(newCard);
+      
+      // Ensure required fields present
+      if (!newCard.playerName || !newCard.year || !newCard.cardSet) {
+        setDraftCard(newCard);
+        setFixDialogOpen(true);
+        return;
+      }
+      
+      // Add the card via CardService so we wait for Firestore write
+      await CardService.createCard(user.uid, newCard);
+      
       // Show a success toast
       toast.success("Card added to collection successfully!");
+      
+      // Invalidate cached cards query so Collection refreshes
+      queryClient.invalidateQueries({ queryKey: ['cards', user.uid] });
+      
       // Navigate to the collection page
       navigate('/collection');
     } catch (error) {
@@ -1692,7 +1368,111 @@ export default function MarketAnalyzerPage() {
       toast.error("Failed to add card to collection");
     }
   };
-  
+
+  // Create a render function for card images 
+  const renderCardImage = (imageUrl: string, title: string, size = 'medium') => {
+    console.log(`Rendering card image for ${title}:`, imageUrl);
+    
+    // Define size classes
+    const sizeClasses = {
+      small: 'h-24 w-20',
+      medium: 'h-48 w-36',
+      large: 'h-64 w-48'
+    };
+    
+    const sizeClass = sizeClasses[size as keyof typeof sizeClasses] || sizeClasses.medium;
+    
+    return (
+      <CardImage
+        src={imageUrl}
+        alt={`${title} Card Image`}
+        className={`${sizeClass} mx-auto`}
+      />
+    );
+  };
+
+  // ... add new function below handleSearch
+  const handleImageSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!imageFile) {
+      setSearchError('Please choose an image file to search.');
+      return;
+    }
+    try {
+      setIsLoading(true);
+      setSearchError('');
+      setResults([]);
+      setCardVariations([]);
+
+      console.log('Searching by image:', imageFile.name);
+      const apiUrl = API_URL;
+      const formData = new FormData();
+      formData.append('image', imageFile);
+
+      const response = await fetch(`${apiUrl.replace(/\/$/, '')}/api/image-search/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) throw new Error(`Server responded with ${response.status}`);
+      const data = await response.json();
+
+      if (!data.listings || data.listings.length === 0) {
+        throw new Error('No listings found for this image');
+      }
+
+      // Use same processing as text
+      originalListings.current = data.listings;
+      if (data.groupedListings && data.groupedListings.length > 0) {
+        // Convert server groupings to variation format and merge duplicates
+        const variations = data.groupedListings.map((group: any, index: number) => {
+          let imageUrl = group.representativeImageUrl;
+          if (!imageUrl) {
+            imageUrl = findBestImage(group.listings || []);
+          }
+          return {
+            id: group.id || `variation-${index}`,
+            title: group.title || `Variation ${index + 1}`,
+            originalTitle: group.title || `Variation ${index + 1}`,
+            imageUrl,
+            count: group.count || group.listings?.length || 0,
+            averagePrice: group.averagePrice || calculateAveragePrice(group.listings || []),
+            sample: group.listings?.slice(0, 5) || [],
+            minPrice: Math.min(...(group.listings || []).map((l: any) => l.totalPrice || l.price || 0)),
+            maxPrice: Math.max(...(group.listings || []).map((l: any) => l.totalPrice || l.price || 0)),
+          };
+        });
+
+        const mergedVariations = mergeDuplicateVariations(variations);
+        setCardVariations(mergedVariations);
+        setIsSearched(true);
+        setAnalysisStep('validate');
+      } else {
+        processScrapedListings(data.listings, { playerName: 'Image Search', year: '', cardSet: '', variation: '', grade: grading || 'Any' });
+      }
+    } catch (err: any) {
+      console.error('Image search error:', err);
+      setSearchError(err.message || 'Failed to search by image');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Helper to persist draftCard once user fills
+  const saveDraftCard = async () => {
+    if (!draftCard) return;
+    try {
+      await CardService.createCard(user!.uid, draftCard);
+      toast.success('Card added to collection successfully!');
+      queryClient.invalidateQueries({ queryKey: ['cards', user!.uid] });
+      setFixDialogOpen(false);
+      navigate('/collection');
+    } catch (err) {
+      console.error('Error saving card:', err);
+      toast.error('Failed to save card');
+    }
+  };
+
   // Render the component...
   return (
     <div className="container py-6">
@@ -1723,29 +1503,24 @@ export default function MarketAnalyzerPage() {
               </p>
             </div>
               
+            {/* Grading dropdown removed to simplify search.  Users can type "PSA 10", "raw", etc. directly in the search box. */}
+            
             <div className="space-y-2">
-              <Label htmlFor="grading">Grading Filter (Optional)</Label>
-              <Select 
-                value={grading} 
-                onValueChange={setGrading}
-              >
-                <SelectTrigger id="grading">
-                  <SelectValue placeholder="Select grading" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="any">Any Condition</SelectItem>
-                  <SelectItem value="PSA 10">PSA 10</SelectItem>
-                  <SelectItem value="PSA 9">PSA 9</SelectItem>
-                  <SelectItem value="PSA 8">PSA 8</SelectItem>
-                  <SelectItem value="BGS 9.5">BGS 9.5</SelectItem>
-                  <SelectItem value="BGS 9">BGS 9</SelectItem>
-                  <SelectItem value="Raw">Raw/Ungraded Only</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-gray-500">
-                Optional: Filter by card condition or grading.
-                Including it in your search query also works.
-              </p>
+              <Label htmlFor="imageUpload">Or search by card image</Label>
+              <Input 
+                id="imageUpload" 
+                type="file" 
+                accept="image/*" 
+                capture="environment" 
+                onChange={(e) => setImageFile(e.target.files?.[0] || null)} 
+              />
+              <Button type="button" variant="secondary" disabled={!imageFile || isLoading} onClick={handleImageSearch}>
+                {isLoading ? (
+                  <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Searching...</>
+                ) : (
+                  <> <Search className="mr-2 h-4 w-4" />Search by Image</>
+                )}
+              </Button>
             </div>
             
             <Button type="submit" disabled={isLoading}>
@@ -2455,6 +2230,35 @@ export default function MarketAnalyzerPage() {
           </div>
         </div>
       )}
+
+      {/* Dialog to complete missing card details */}
+      <Dialog open={fixDialogOpen} onOpenChange={setFixDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Complete card details</DialogTitle>
+          </DialogHeader>
+          {draftCard && (
+            <div className="space-y-4 py-2">
+              <div>
+                <Label>Player Name *</Label>
+                <Input value={draftCard.playerName || ''} onChange={e=>setDraftCard({...draftCard, playerName:e.target.value})} />
+              </div>
+              <div>
+                <Label>Year *</Label>
+                <Input value={draftCard.year || ''} onChange={e=>setDraftCard({...draftCard, year:e.target.value})} />
+              </div>
+              <div>
+                <Label>Card Set *</Label>
+                <Input value={draftCard.cardSet || ''} onChange={e=>setDraftCard({...draftCard, cardSet:e.target.value})} />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={()=>setFixDialogOpen(false)}>Cancel</Button>
+            <Button onClick={saveDraftCard} disabled={!draftCard?.playerName || !draftCard?.year || !draftCard?.cardSet}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

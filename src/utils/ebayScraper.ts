@@ -136,13 +136,36 @@ export function calculateMarketMetrics(listings: GroupedListing[]) {
   const maxPrice = Math.max(...prices);
   const priceRange = maxPrice - minPrice;
   
-  // Calculate volatility (as coefficient of variation)
+  // Calculate volatility (coefficient of variation)
   const variance = prices.reduce((sum, price) => sum + Math.pow(price - averagePrice, 2), 0) / prices.length;
   const standardDeviation = Math.sqrt(variance);
-  const volatility = standardDeviation > 0 ? (standardDeviation / Math.max(0.01, averagePrice)) * 100 : 0;
   
-  // Scale volatility to 0-100 range
-  const scaledVolatility = Math.min(100, Math.max(0, volatility / 0.5)); // 50% variation = 100 volatility
+  // Raw percentage (0-100) before scaling
+  let volatilityPct = 0;
+  if (standardDeviation > 0) {
+    // Calculate coefficient of variation (CV) and scale it to be more intuitive
+    // CV = (standard deviation / mean) * 100
+    volatilityPct = (standardDeviation / Math.max(0.01, averagePrice)) * 100;
+    
+    // Scale the volatility to be more intuitive:
+    // - CV of 0% = 0 (perfect stability)
+    // - CV of 50% = 50 (moderate volatility)
+    // - CV of 100% = 75 (high volatility)
+    // - CV of 200%+ = 100 (extreme volatility)
+    volatilityPct = Math.min(100, Math.max(0, volatilityPct * 0.75));
+  }
+  
+  // ----- guarantee a floor so every card registers something -----
+  if (validListings.length === 1) {
+    // Single comp → minimal uncertainty
+    volatilityPct = Math.max(volatilityPct, 5);
+  } else if (volatilityPct === 0) {
+    // Multiple comps but identical prices
+    volatilityPct = 3;
+  }
+  
+  // No need for additional scaling since we already scaled above
+  const scaledVolatility = volatilityPct;
   
   // Calculate trend (direction of price movement)
   let trend = 50; // Neutral start
@@ -479,10 +502,11 @@ export function generateRecommendation(metrics: ReturnType<typeof calculateMarke
     action = 'SELL';
     reason = 'Downward trend with high price volatility suggests declining value.';
     details = `This card is showing concerning market signals with a downward trend (${trend}%) and high price instability (volatility: ${volatility}%). These conditions often precede further price drops.`;
-  } else if (trend < 40 && roi > 20) {
+  } else if (trend < 40 && demand < 50) {
+    // Only recommend selling if BOTH trend AND demand are low
     action = 'SELL';
-    reason = 'Market is cooling while you have a positive ROI.';
-    details = `With your current ROI of ${roi.toFixed(1)}% and the market showing signs of cooling (trend: ${trend}%), this may be a good time to lock in your profits.`;
+    reason = 'Market appears to be cooling with decreasing demand.';
+    details = `With a weak market trend (${trend}%) and decreasing demand (${demand}%), this may indicate the market is cooling. Consider your position carefully.`;
   } else if (volatility > 70 && demand < 40) {
     action = 'WATCH';
     reason = 'High volatility with low demand indicates an unstable market.';
@@ -491,6 +515,11 @@ export function generateRecommendation(metrics: ReturnType<typeof calculateMarke
     action = 'WATCH';
     reason = 'Very low demand may make it difficult to sell.';
     details = `With minimal market activity (demand: ${demand}%), this card may be difficult to sell at a fair price. Consider waiting for increased collector interest.`;
+  } else if (trend > 50 && demand > 40) {
+    // Add explicit HOLD with positive reasoning for rising trends
+    action = 'HOLD';
+    reason = 'Positive price trend suggests continued growth potential.';
+    details = `This card is showing good market metrics (trend: ${trend}%, demand: ${demand}%) with a positive price trajectory. If you own it, holding may be the best strategy to capture continued appreciation.`;
   } else {
     action = 'HOLD';
     reason = 'Stable market conditions with no strong indicators either way.';

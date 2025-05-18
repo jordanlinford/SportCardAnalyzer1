@@ -56,3 +56,5 @@ VITE_FIREBASE_APP_ID=1:27312906394:web:11296b8bb530daad5a7f23
 VITE_FIREBASE_MEASUREMENT_ID=G-YNZTKCHQT0
 
 VITE_SCRAPER_API=http://localhost:8000
+/credentials/*.json
+server/credentials/service-account.json

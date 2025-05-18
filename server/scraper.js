@@ -1236,21 +1236,19 @@ async function searchRawCards(searchParams) {
 
 // Improve scrapeEbayWithQuery function to be more robust
 async function scrapeEbayWithQuery(searchQuery, isRaw = false) {
-  // Encode the search query
   const encodedQuery = encodeURIComponent(searchQuery);
-  
-  // Create eBay URL for sold items
   const ebayUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodedQuery}&_sacat=212&LH_Complete=1&LH_Sold=1&_sop=13&_ipg=200`;
   console.log("Raw search URL:", ebayUrl);
-  
   try {
-    // Scrape eBay with our search query
     const result = await scrapeEbay(ebayUrl, isRaw);
     console.log(`Raw search: total listings scraped: ${result.length}`);
+    if (result.length === 0) {
+      throw new Error('No listings found');
+    }
     return result;
   } catch (error) {
     console.error("Error scraping eBay for raw cards:", error);
-    return [];
+    throw error;
   }
 }
 
@@ -1392,106 +1390,17 @@ function hasCardSet(title, cardSet) {
   return false;
 }
 
-/**
- * Generate synthetic data for client display when no real data is available
- */
-function generateSyntheticData(searchParams, type = 'raw') {
-  console.log(`Generating synthetic ${type} card data for display`);
-  
-  // Generate a reasonable price based on the parameters
-  let basePrice = 15; // Default fallback price
-  
-  // Adjust price based on player, year, and grade
-  if (searchParams.playerName && searchParams.year) {
-    // Try to estimate a reasonable price based on the player and year
-    // Create some basic synthetic data
-    // Rookies from more recent years typically cost less than older rookies
-    const currentYear = new Date().getFullYear();
-    const cardAge = currentYear - parseInt(searchParams.year);
-    // Base price estimate - newer cards start lower
-    basePrice = cardAge < 3 ? 5 : (cardAge < 10 ? 15 : 30);
-    
-    // Adjust for specific players - well-known stars cost more
-    const playerName = searchParams.playerName.toLowerCase();
-    const stars = ['patrick mahomes', 'tom brady', 'aaron rodgers', 'lamar jackson', 
-                  'josh allen', 'justin herbert', 'joe burrow', 'trevor lawrence'];
-    
-    if (stars.some(star => playerName.includes(star))) {
-      basePrice *= 3; // Star player premium
-    }
-    
-    // Adjust for graded vs raw
-    if (type !== 'raw' && searchParams.grade) {
-      const grade = searchParams.grade.toLowerCase();
-      // High grades command premium prices
-      if (grade.includes('10') || grade.includes('9.5')) {
-        basePrice *= 5;
-      } else if (grade.includes('9')) {
-        basePrice *= 2;
-      }
-    }
-  }
-  
-  // Create synthetic listings
-  const syntheticListings = [];
-  const now = new Date();
-  
-  // Generate multiple data points over the last 3 months
-  for (let i = 0; i < 5; i++) {
-    const daysAgo = Math.floor(Math.random() * 90); // Random distribution over 90 days
-    const date = new Date(now);
-    date.setDate(date.getDate() - daysAgo);
-    
-    // Add random variation to price (more variation for older dates)
-    const variation = (Math.random() * 0.3) - 0.15; // ±15%
-    const price = basePrice * (1 + variation);
-    
-    syntheticListings.push({
-      title: `${searchParams.year || 'Unknown Year'} ${searchParams.playerName} ${searchParams.cardSet || ''} ${searchParams.cardNumber ? '#' + searchParams.cardNumber : ''} ${type === 'raw' ? 'Raw Card' : searchParams.grade || 'Card'}`,
-      price,
-      shipping: Math.random() > 0.5 ? 4.99 : 0, // 50% chance of free shipping
-      totalPrice: price + (Math.random() > 0.5 ? 4.99 : 0),
-      date: date.toISOString(),
-      dateSold: date.toISOString().split('T')[0],
-      url: '#',
-      imageUrl: 'https://via.placeholder.com/300?text=Card+Image+Unavailable',
-      source: 'Synthetic'
-    });
-  }
-  
-  // Sort by date, newest first
-  syntheticListings.sort((a, b) => new Date(b.dateSold).getTime() - new Date(a.dateSold).getTime());
-  
-  return syntheticListings;
-}
-
 // Add a new function to search with an exact query string
 async function searchWithExactQuery(exactQuery, isRaw = false) {
-  console.log("Searching with exact query:", exactQuery);
-  
-  // Encode the search query
-  const encodedQuery = encodeURIComponent(exactQuery);
-  
-  // Create eBay URL for sold items
-  const ebayUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodedQuery}&_sacat=212&LH_Complete=1&LH_Sold=1&_sop=13&_ipg=240`;
-  console.log("Search URL:", ebayUrl);
-  
   try {
-    // Scrape eBay with exact search query
-    const result = await scrapeEbay(ebayUrl, isRaw);
-    console.log(`Exact search query "${exactQuery}": scraped ${result.length} listings`);
-    
-    if (result.length > 0) {
-      console.log("SAMPLE LISTINGS:");
-      result.slice(0, 3).forEach(item => {
-        console.log(`- ${item.title} - $${item.price} - Image: ${item.imageUrl ? 'Yes' : 'No'}`);
-      });
+    const listings = await scrapeEbayWithQuery(exactQuery, isRaw);
+    if (listings.length === 0) {
+      throw new Error('No listings found');
     }
-    
-    return result;
+    return listings;
   } catch (error) {
-    console.error(`Error scraping eBay with exact query "${exactQuery}":`, error);
-    return [];
+    console.error("Error in searchWithExactQuery:", error);
+    throw error;
   }
 }
 
@@ -1530,63 +1439,3 @@ app.post('/api/exact-search', async (req, res) => {
     });
   }
 });
-
-/**
- * Generate synthetic data from a free text query
- */
-function generateSyntheticDataFromQuery(query, grade = 'any') {
-  console.log(`Generating synthetic data for query: "${query}" with grade: ${grade}`);
-  
-  // Extract possible year
-  const yearMatch = query.match(/\b(19|20)\d{2}\b/);
-  const year = yearMatch ? yearMatch[0] : new Date().getFullYear().toString();
-  
-  // Extract possible player name (first 2-3 words)
-  const words = query.split(/\s+/);
-  const playerName = words.slice(0, Math.min(3, words.length)).join(' ');
-  
-  // Generate a reasonable price based on the query
-  let basePrice = 20; // Default fallback price
-  
-  // Adjust price based on grade
-  if (grade !== 'any' && grade !== 'Raw') {
-    // High grades command premium prices
-    if (grade.includes('10') || grade.includes('9.5')) {
-      basePrice *= 5;
-    } else if (grade.includes('9')) {
-      basePrice *= 2;
-    }
-  }
-  
-  // Create synthetic listings
-  const syntheticListings = [];
-  const now = new Date();
-  
-  // Generate multiple data points over the last 3 months
-  for (let i = 0; i < 5; i++) {
-    const daysAgo = Math.floor(Math.random() * 90); // Random distribution over 90 days
-    const date = new Date(now);
-    date.setDate(date.getDate() - daysAgo);
-    
-    // Add random variation to price
-    const variation = (Math.random() * 0.3) - 0.15; // ±15%
-    const price = basePrice * (1 + variation);
-    
-    syntheticListings.push({
-      title: `${year} ${playerName} ${grade !== 'any' && grade !== 'Raw' ? grade : ''}`,
-      price,
-      shipping: Math.random() > 0.5 ? 4.99 : 0, // 50% chance of free shipping
-      totalPrice: price + (Math.random() > 0.5 ? 4.99 : 0),
-      date: date.toISOString(),
-      dateSold: date.toISOString().split('T')[0],
-      url: '#',
-      imageUrl: 'https://via.placeholder.com/300?text=Card+Image+Unavailable',
-      source: 'Synthetic'
-    });
-  }
-  
-  // Sort by date, newest first
-  syntheticListings.sort((a, b) => new Date(b.dateSold).getTime() - new Date(a.dateSold).getTime());
-  
-  return syntheticListings;
-}

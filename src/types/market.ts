@@ -1,16 +1,37 @@
 export interface MarketAnalysisRequest {
   playerName: string;
-  year?: string;
-  cardSet?: string;
+  query: string;
+  negKeywords?: string[];
+  grade?: string;
+  conditionFilter?: 'graded' | 'ungraded' | 'any';
+}
+
+export interface CardListing {
+  title: string;
+  price: number;
+  date: string;
+  imageUrl: string;
+  grade?: string;
   variation?: string;
-  cardNumber?: string;
-  condition: string;
+  source?: string;
+  url?: string;
 }
 
 export interface MarketAnalysisResponse {
-  trend: "Upward" | "Downward" | "Stable" | "Insufficient Data";
-  volatility: number | null;
-  liquidity: number | null;
-  investment_rating: "Strong Buy" | "Buy" | "Hold" | "Avoid" | "Speculative" | "Unknown";
-  last_updated: string;
+  listings: CardListing[];
+  totalCount: number;
+  averagePrice?: number;
+  priceRange?: {
+    min: number;
+    max: number;
+  };
+  variations?: {
+    name: string;
+    count: number;
+    averagePrice: number;
+  }[];
+  timeRange?: {
+    start: string;
+    end: string;
+  };
 } 

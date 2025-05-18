@@ -21,7 +21,6 @@ import { useUserSubscription } from "@/hooks/useUserSubscription";
 import { DisplayCaseDebugPreview } from "@/components/DisplayCaseDebugPreview";
 import { DisplayCaseImageTest } from "@/components/DisplayCaseImageTest";
 import DisplayCaseCard from "@/components/display-cases/DisplayCaseCard";
-import { CardDebugDisplay } from "@/components/CardDebugDisplay";
 
 const woodBg = "bg-[url('https://www.transparenttextures.com/patterns/wood-pattern.png')] bg-amber-100";
 const glassOverlay = "absolute inset-0 bg-gradient-to-b from-white/40 to-white/10 pointer-events-none rounded-lg";
@@ -167,23 +166,41 @@ export default function DisplayCasesPage() {
   // Define CardThumbnails component for displaying card images
   const CardThumbnails = ({ displayCase }: { displayCase: DisplayCase }) => {
     const { cardImageUrls, hasMatches } = useCardTagMatch(cards, displayCase);
+    const [imageErrors, setImageErrors] = useState<Record<number, boolean>>({});
     
     if (cardImageUrls.length === 0) {
       return <div className="text-xs text-amber-400">No cards</div>;
     }
+    
+    const handleImageError = (idx: number) => {
+      setImageErrors(prev => ({...prev, [idx]: true}));
+    };
     
     return (
       <>
         {/* Glass overlay */}
         <div className={`${glassOverlay} z-0`} />
         {cardImageUrls.map((src, idx) => (
-          <img
-            key={idx}
-            src={src}
-            alt="Card thumbnail"
-            className="w-16 h-24 object-cover rounded shadow-lg border-2 border-amber-200 bg-white/80 group-hover:shadow-yellow-400/40 transition-all duration-200 relative z-10"
-            style={{ boxShadow: '0 2px 8px 0 rgba(0,0,0,0.18), 0 0 0 2px #eab30833', position: 'relative' }}
-          />
+          imageErrors[idx] ? (
+            // Fallback colored card when image fails to load
+            <div
+              key={idx}
+              className="w-16 h-24 rounded shadow-lg border-2 border-amber-200 bg-amber-50 flex items-center justify-center relative z-10"
+              style={{ boxShadow: '0 2px 8px 0 rgba(0,0,0,0.18), 0 0 0 2px #eab30833' }}
+            >
+              <span className="text-amber-700 text-xs font-medium">Card {idx+1}</span>
+            </div>
+          ) : (
+            <img
+              key={idx}
+              src={src}
+              alt="Card thumbnail"
+              className="w-16 h-24 object-cover rounded shadow-lg border-2 border-amber-200 bg-white/80 group-hover:shadow-yellow-400/40 transition-all duration-200 relative z-10"
+              style={{ boxShadow: '0 2px 8px 0 rgba(0,0,0,0.18), 0 0 0 2px #eab30833', position: 'relative' }}
+              onError={() => handleImageError(idx)}
+              loading="lazy"
+            />
+          )
         ))}
       </>
     );
@@ -203,7 +220,7 @@ export default function DisplayCasesPage() {
 
   const handleCardClick = (displayCase: DisplayCase, e: React.MouseEvent) => {
     // Navigate to display case details
-    navigate(`/display-case/${displayCase.id}`);
+    navigate(`/display-cases/${displayCase.id}`);
   };
 
   const toggleDropdown = (id: string, e: React.MouseEvent) => {
@@ -262,13 +279,6 @@ export default function DisplayCasesPage() {
           </button>
         </div>
       </div>
-
-      {/* Debug display */}
-      {showDebug && (
-        <div className="mb-8">
-          <CardDebugDisplay />
-        </div>
-      )}
 
       {/* Login notification for unauthenticated users */}
       {!user && (
@@ -442,7 +452,7 @@ export default function DisplayCasesPage() {
                 key={displayCase.id}
                 className={`relative ${woodBg} ${goldBorder} ${shadow} rounded-2xl overflow-hidden cursor-pointer group transition-transform duration-200 hover:scale-105 hover:shadow-amber-300/60`}
                 style={{ minHeight: 260 }}
-                onClick={(e) => navigate(`/display-case/${displayCase.id}`)}
+                onClick={(e) => navigate(`/display-cases/${displayCase.id}`)}
               >
                 {/* Wood badge */}
                 <span className={badge}>Wood</span>
@@ -499,7 +509,7 @@ export default function DisplayCasesPage() {
                   <div className="flex flex-wrap gap-1 mb-2">
                     {displayCase.tags && displayCase.tags.length > 0 ? (
                       displayCase.tags.map((tag: string) => (
-                        <span key={tag} className="bg-yellow-200 text-yellow-800 text-xs px-2 py-0.5 rounded-full mr-1 border border-yellow-300">{tag}</span>
+                        <span key={tag} className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full mr-1 border border-blue-200">#{tag}</span>
                       ))
                     ) : (
                       <span className="text-xs text-amber-400">No tags</span>

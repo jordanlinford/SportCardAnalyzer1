@@ -9,6 +9,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { API_URL } from '@/lib/firebase/config';
 
 interface EbayCardSearchProps {
   onAddCard: (card: Card) => void;
@@ -62,19 +63,8 @@ export function EbayCardSearch({ onAddCard }: EbayCardSearchProps) {
     setSearchError(null);
     
     try {
-      // Build search parameters using free text search
-      // Add playerName field for backward compatibility with server
-      const requestPayload = {
-        query: searchQuery.trim(),
-        playerName: searchQuery.trim().split(' ')[0] + ' ' + (searchQuery.trim().split(' ')[1] || ''),
-        grade: grading !== 'any' ? grading : undefined,
-        condition: grading !== 'any' ? grading : undefined,
-        negKeywords: ['lot', 'reprint', 'digital', 'case', 'break'],
-        exactMatch: false // Always use broader search with free text
-      };
-      
-      // Log request for debugging
-      console.log("Request payload:", requestPayload);
+      // Log query for debugging
+      console.log("Card search query:", searchQuery.trim());
       
       // Tell user we're connecting
       toast.info('Connecting to eBay scraper...');
@@ -92,8 +82,10 @@ export function EbayCardSearch({ onAddCard }: EbayCardSearchProps) {
         return;
       }
       
-      // Make the request
-      const response = await axios.post<ScrapeResponse>('http://localhost:3001/api/scrape', requestPayload);
+      // Make the request to new scraper endpoint
+      const response = await axios.post<ScrapeResponse>(`${API_URL.replace(/\/$/, '')}/api/text-search`, {
+        query: searchQuery.trim()
+      });
       
       console.log("Received scraper response:", response.data);
       

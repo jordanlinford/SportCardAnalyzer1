@@ -262,7 +262,7 @@ export default function DisplayCaseDetailPage() {
               {displayCase.tags.map((tag: string) => (
                 <span
                   key={tag}
-                  className="text-xs bg-muted px-2 py-1 rounded-full border"
+                  className="text-xs bg-blue-100 px-2 py-1 rounded-full border border-blue-200 text-blue-700"
                 >
                   #{tag}
                 </span>

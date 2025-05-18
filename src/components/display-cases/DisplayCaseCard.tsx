@@ -14,6 +14,7 @@ export default function DisplayCaseCard({ displayCase }: DisplayCaseCardProps) {
   const navigate = useNavigate();
   const [cardData, setCardData] = useState<Card[]>([]);
   const [loading, setLoading] = useState(false);
+  const [imageLoadErrors, setImageLoadErrors] = useState<{[key: string]: boolean}>({});
 
   // Directly fetch card data if it wasn't provided
   useEffect(() => {
@@ -102,7 +103,7 @@ export default function DisplayCaseCard({ displayCase }: DisplayCaseCardProps) {
   }, [displayCase]);
 
   const handleClick = () => {
-    navigate(`/display-case/${displayCase.id}`);
+    navigate(`/display-cases/${displayCase.id}`);
   };
 
   const formatDate = (timestamp: any) => {
@@ -113,13 +114,41 @@ export default function DisplayCaseCard({ displayCase }: DisplayCaseCardProps) {
     return format(date, "MMM d, yyyy");
   };
 
-  // Function to render a card placeholder with the ID for debugging
-  const renderCardPlaceholder = (cardId: string) => (
+  // Function to handle image load errors
+  const handleImageError = (cardId: string) => {
+    setImageLoadErrors(prev => ({...prev, [cardId]: true}));
+  };
+
+  // Function to render a card placeholder with player name or ID
+  const renderCardPlaceholder = (card: Card) => (
     <div 
-      className="h-28 w-20 bg-gray-200 flex flex-col items-center justify-center text-xs text-gray-500 rounded shadow-sm border border-gray-300 overflow-hidden"
+      className="h-28 w-20 bg-gray-100 flex flex-col items-center justify-center text-xs rounded shadow-sm border border-gray-200 overflow-hidden"
     >
-      <div className="font-medium text-center px-1 mb-1">ID:</div>
-      <div className="text-[8px] text-center px-1 overflow-hidden text-ellipsis">{cardId.substring(0, 12)}...</div>
+      {card.playerName ? (
+        <>
+          <div className="font-medium text-center px-1 text-gray-700">{card.playerName}</div>
+          {card.year && <div className="text-[8px] text-center px-1 text-gray-500">{card.year}</div>}
+        </>
+      ) : (
+        <>
+          <div className="font-medium text-center px-1 text-gray-500">Card</div>
+          <div className="text-[8px] text-center px-1 text-gray-400 overflow-hidden text-ellipsis">
+            {card.id ? card.id.substring(0, 8) + "..." : "Unknown"}
+          </div>
+        </>
+      )}
+    </div>
+  );
+
+  // Function to render a card ID placeholder
+  const renderIdPlaceholder = (cardId: string) => (
+    <div 
+      className="h-28 w-20 bg-gray-100 flex flex-col items-center justify-center text-xs rounded shadow-sm border border-gray-200 overflow-hidden"
+    >
+      <div className="font-medium text-center px-1 text-gray-600">Card</div>
+      <div className="text-[8px] text-center px-1 text-gray-500 overflow-hidden text-ellipsis">
+        {cardId.substring(0, 8)}...
+      </div>
     </div>
   );
 
@@ -138,7 +167,7 @@ export default function DisplayCaseCard({ displayCase }: DisplayCaseCardProps) {
           {displayCase.tags.map((tag) => (
             <span
               key={tag}
-              className="px-2 py-1 text-xs bg-muted rounded-full text-muted-foreground"
+              className="px-2 py-1 text-xs bg-blue-100 rounded-full text-blue-700 border border-blue-200"
             >
               #{tag}
             </span>
@@ -158,19 +187,17 @@ export default function DisplayCaseCard({ displayCase }: DisplayCaseCardProps) {
             // Display actual card images if we have cardData
             cardData.slice(0, 3).map((card) => (
               <div key={card.id} className="mr-2">
-                {card.imageUrl ? (
+                {card.imageUrl && !imageLoadErrors[card.id] ? (
                   <img 
                     src={card.imageUrl} 
                     alt={card.playerName || "Card image"} 
                     className="h-28 w-20 object-cover rounded shadow-sm border border-gray-200"
+                    onError={() => handleImageError(card.id)}
+                    loading="lazy"
                   />
                 ) : (
-                  // Fallback if image is not available
-                  <div 
-                    className="h-28 w-20 bg-gray-200 flex items-center justify-center text-sm text-gray-500 rounded shadow-sm border border-gray-300"
-                  >
-                    {card.playerName?.substring(0, 10) || "Card"}
-                  </div>
+                  // Fallback if image is not available or failed to load
+                  renderCardPlaceholder(card)
                 )}
               </div>
             ))
@@ -178,7 +205,7 @@ export default function DisplayCaseCard({ displayCase }: DisplayCaseCardProps) {
             // Fallback to showing card ID placeholders when no card data is found
             displayCase.cardIds.slice(0, 3).map((cardId) => (
               <div key={cardId} className="mr-2">
-                {renderCardPlaceholder(cardId)}
+                {renderIdPlaceholder(cardId)}
               </div>
             ))
           ) : (
@@ -191,8 +218,8 @@ export default function DisplayCaseCard({ displayCase }: DisplayCaseCardProps) {
           {/* Show the +X indicator if more than 3 cards */}
           {((cardData && cardData.length > 3) || 
             (!cardData.length && displayCase.cardIds && displayCase.cardIds.length > 3)) && (
-            <div className="flex items-center justify-center h-28 w-20 bg-muted rounded-lg border border-gray-200">
-              <span className="text-sm text-muted-foreground">
+            <div className="flex items-center justify-center h-28 w-20 bg-gray-50 rounded-lg border border-gray-200">
+              <span className="text-sm text-gray-500">
                 +{(cardData.length > 0 ? cardData.length : displayCase.cardIds?.length || 0) - 3}
               </span>
             </div>

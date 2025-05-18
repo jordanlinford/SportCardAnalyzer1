@@ -19,10 +19,10 @@ except ImportError:
     class MarketAnalyzer:
         def analyze(self, sales_data):
             return {
-                "trend": "Upward",
-                "volatility": 0.2,
-                "liquidity": 0.5,
-                "investment_rating": "Hold"
+                "trend": "Unknown",
+                "volatility": 0.0,
+                "liquidity": 0.0,
+                "investment_rating": "Unknown"
             }
 
 # Configure logging
@@ -51,35 +51,6 @@ class AnalyzeMarketRequest(BaseModel):
     query: Optional[str] = None
     negKeywords: Optional[List[str]] = None
 
-# Mock data generator
-def get_mock_sales_data(player_name: str) -> List[Dict[str, Any]]:
-    """Generate mock sales data for testing"""
-    import random
-    from datetime import datetime, timedelta
-    
-    today = datetime.now()
-    sales_data = []
-    
-    # Generate 20 data points over the last 90 days
-    for i in range(20):
-        days_ago = random.randint(1, 90)
-        date = today - timedelta(days=days_ago)
-        
-        # Base price with some randomness
-        base_price = 100 + (90 - days_ago) * 0.5  # Slight upward trend
-        variation = random.uniform(-10, 10)
-        price = max(10, base_price + variation)
-        
-        sales_data.append({
-            "date": date.strftime("%Y-%m-%d"),
-            "price": round(price, 2),
-            "title": f"{player_name} Card #{random.randint(1, 300)}",
-            "condition": random.choice(["Mint", "Near Mint", "Excellent", "Good"]),
-            "platform": "eBay"
-        })
-    
-    return sales_data
-
 @app.get("/")
 async def root():
     return {"message": "Market Analyzer API"}
@@ -92,29 +63,26 @@ async def analyze_market(request: AnalyzeMarketRequest):
         # Initialize analyzer
         analyzer = MarketAnalyzer()
         
-        # Get data (mocked for now)
+        # Get player name
         player_name = request.playerName
         if not player_name and request.query:
             # Extract player name from query if direct name not provided
             query_parts = request.query.split()
             player_name = " ".join(query_parts[:2])  # Use first two words as player name
         
-        sales_data = get_mock_sales_data(player_name)
+        # TODO: Replace with actual data fetching
+        # For now, return an error indicating no data is available
+        raise HTTPException(
+            status_code=404,
+            detail="No market data available. Please implement data fetching."
+        )
         
-        # Analyze the data
-        analysis_results = analyzer.analyze(sales_data)
-        
-        # Return results
-        return {
-            "success": True,
-            "marketAnalysis": {
-                "trend": analysis_results.get("trend", "Unknown"),
-                "volatility": analysis_results.get("volatility", 0.3),
-                "liquidity": analysis_results.get("liquidity", 0.4),
-                "investment_rating": analysis_results.get("investment_rating", "Hold"),
-                "listings": sales_data
-            }
-        }
+    except HTTPException as e:
+        logger.error(f"HTTP error: {str(e)}")
+        return JSONResponse(
+            status_code=e.status_code,
+            content={"success": False, "error": str(e.detail)}
+        )
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}")
         return JSONResponse(

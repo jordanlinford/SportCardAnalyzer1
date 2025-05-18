@@ -10,6 +10,7 @@ import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
 import { CardService } from '@/services/CardService';
 import axios from 'axios';
+import { API_URL } from '@/lib/firebase/config';
 
 const CollectionPage: React.FC = () => {
   const [isAddCardModalOpen, setIsAddCardModalOpen] = useState(false);
@@ -141,7 +142,7 @@ const CollectionPage: React.FC = () => {
         };
 
         // Use the absolute URL with the correct port instead of a relative URL
-        const response = await axios.post<ScrapeResponse>('http://localhost:3001/api/scrape', enhancedParams);
+        const response = await axios.post<ScrapeResponse>(`${API_URL.replace(/\/$/, '')}/api/text-search`, { query: fullSearchString });
         
         console.log(`Response for ${card.playerName}: success=${response.data.success}, listings=${response.data.listings?.length || 0}`);
         
@@ -290,7 +291,7 @@ const CollectionPage: React.FC = () => {
               };
 
               // Use the absolute URL with the correct port instead of a relative URL
-              const response = await axios.post<ScrapeResponse>('http://localhost:3001/api/scrape', enhancedParams);
+              const response = await axios.post<ScrapeResponse>(`${API_URL.replace(/\/$/, '')}/api/text-search`, { query: fullSearchString });
               
               console.log(`Response for ${card.playerName}: success=${response.data.success}, listings=${response.data.listings?.length || 0}`);
               

@@ -32,12 +32,10 @@ class MarketAnalyzer:
         Returns:
             Dictionary containing market analysis results
         """
-        # This method would typically fetch data from a database or external API
-        # For now, we'll use the analyze method with mock data
-        mock_data = self._get_mock_data(
-            player_name, year, card_set, variation, card_number, scenario
+        # TODO: Implement actual data fetching from database or external API
+        raise NotImplementedError(
+            "Data fetching not implemented. Please implement data fetching from a database or external API."
         )
-        return self.analyze(mock_data)
 
     def analyze(self, sales_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -117,26 +115,4 @@ class MarketAnalyzer:
             "volatility": volatility_score,
             "liquidity": liquidity_score,
             "investment_rating": rating
-        }
-
-    def _get_mock_data(
-        self,
-        player_name: str,
-        year: Optional[str],
-        card_set: Optional[str],
-        variation: Optional[str],
-        card_number: Optional[str],
-        scenario: str
-    ) -> List[Dict[str, Any]]:
-        """
-        Generate mock sales data for testing.
-        In a real implementation, this would fetch data from a database or API.
-        """
-        # This is just example data - in production, you'd fetch real data
-        return [
-            {"date": "2024-01-01", "price": 100.0},
-            {"date": "2024-01-15", "price": 110.0},
-            {"date": "2024-02-01", "price": 105.0},
-            {"date": "2024-02-15", "price": 115.0},
-            {"date": "2024-03-01", "price": 120.0}
-        ] 
+        } 

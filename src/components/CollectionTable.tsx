@@ -1,13 +1,16 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card as CardType } from "../types/Card";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { EmergencyDeleteButton } from "@/components/EmergencyDeleteButton";
 import { useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, ExternalLink } from "lucide-react";
+import { RefreshCw, ExternalLink, ArrowUpDown, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+
+type SortField = 'createdAt' | 'playerName' | 'value' | 'year';
+type SortOrder = 'asc' | 'desc';
 
 interface CollectionTableProps {
   onEditCard?: (card: CardType) => void;
@@ -19,11 +22,71 @@ interface CollectionTableProps {
 export default function CollectionTable({ onEditCard, cards, onUpdateCard, updatingCardIds = [] }: CollectionTableProps) {
   const { user } = useAuth();
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [sortField, setSortField] = useState<SortField>('createdAt');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [selectedTag, setSelectedTag] = useState<string>('');
   const queryClient = useQueryClient();
 
+  // Get unique tags from all cards
+  const availableTags = useMemo(() => {
+    const tags = new Set<string>();
+    cards.forEach(card => {
+      card.tags?.forEach(tag => tags.add(tag));
+    });
+    return Array.from(tags).sort();
+  }, [cards]);
+
+  // Filter and sort cards
+  const filteredAndSortedCards = useMemo(() => {
+    let filtered = cards;
+    
+    // Apply tag filter
+    if (selectedTag) {
+      filtered = filtered.filter(card => 
+        card.tags?.includes(selectedTag)
+      );
+    }
+
+    // Apply sorting
+    return [...filtered].sort((a, b) => {
+      let comparison = 0;
+      switch (sortField) {
+        case 'createdAt':
+          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          comparison = dateA - dateB;
+          break;
+        case 'playerName':
+          comparison = (a.playerName || '').localeCompare(b.playerName || '');
+          break;
+        case 'value':
+          comparison = (a.currentValue || a.price || 0) - (b.currentValue || b.price || 0);
+          break;
+        case 'year': {
+          const yearA = Number(a.year) || 0;
+          const yearB = Number(b.year) || 0;
+          comparison = yearA - yearB;
+          break;
+        }
+      }
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+  }, [cards, selectedTag, sortField, sortOrder]);
+
   // Calculate pagination
-  const paginatedCards = cards.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const totalPages = Math.ceil(cards.length / PAGE_SIZE);
+  const paginatedCards = filteredAndSortedCards.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.ceil(filteredAndSortedCards.length / pageSize);
+
+  const handleSort = (field: SortField) => {
+    if (field === sortField) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('desc');
+    }
+    setPage(1); // Reset to first page when sorting changes
+  };
 
   const handleCardDeleted = () => {
     // Refetch cards after deletion
@@ -40,15 +103,78 @@ export default function CollectionTable({ onEditCard, cards, onUpdateCard, updat
 
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="p-4 border-b border-gray-200">
+        <div className="flex items-center gap-4">
+          <div className="flex-1">
+            <label htmlFor="tag-filter" className="block text-sm font-medium text-gray-700 mb-1">
+              Filter by Tag
+            </label>
+            <div className="flex items-center gap-2">
+              <select
+                id="tag-filter"
+                value={selectedTag}
+                onChange={(e) => {
+                  setSelectedTag(e.target.value);
+                  setPage(1); // Reset to first page when filter changes
+                }}
+                className="rounded-md border-gray-300 text-sm"
+              >
+                <option value="">All Tags</option>
+                {availableTags.map(tag => (
+                  <option key={tag} value={tag}>
+                    {tag}
+                  </option>
+                ))}
+              </select>
+              {selectedTag && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedTag('');
+                    setPage(1);
+                  }}
+                  className="h-8 w-8 p-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+          <div className="flex items-end">
+            <select
+              value={pageSize}
+              aria-label="Select number of cards per page"
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="rounded-md border-gray-300 text-sm"
+            >
+              {PAGE_SIZE_OPTIONS.map(size => (
+                <option key={size} value={size}>
+                  {size} per page
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Player
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('playerName')}>
+                <div className="flex items-center gap-1">
+                  Player
+                  <ArrowUpDown className="h-4 w-4" />
+                </div>
               </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Year
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" onClick={() => handleSort('year')}>
+                <div className="flex items-center gap-1">
+                  Year
+                  <ArrowUpDown className="h-4 w-4" />
+                </div>
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Set
@@ -59,8 +185,11 @@ export default function CollectionTable({ onEditCard, cards, onUpdateCard, updat
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Condition
               </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Value
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100" onClick={() => handleSort('value')}>
+                <div className="flex items-center gap-1">
+                  Value
+                  <ArrowUpDown className="h-4 w-4" />
+                </div>
               </th>
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Tags
@@ -149,6 +278,23 @@ export default function CollectionTable({ onEditCard, cards, onUpdateCard, updat
 
       {totalPages > 1 && (
         <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+          <div className="flex items-center gap-4">
+            <select
+              value={pageSize}
+              aria-label="Select number of cards per page"
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1); // Reset to first page when changing page size
+              }}
+              className="rounded-md border-gray-300 text-sm"
+            >
+              {PAGE_SIZE_OPTIONS.map(size => (
+                <option key={size} value={size}>
+                  {size} per page
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="flex-1 flex justify-between sm:hidden">
             <button
               onClick={() => setPage(p => Math.max(1, p - 1))}
@@ -168,8 +314,8 @@ export default function CollectionTable({ onEditCard, cards, onUpdateCard, updat
           <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
             <div>
               <p className="text-sm text-gray-700">
-                Showing <span className="font-medium">{(page - 1) * PAGE_SIZE + 1}</span> to{" "}
-                <span className="font-medium">{Math.min(page * PAGE_SIZE, cards.length)}</span> of{" "}
+                Showing <span className="font-medium">{(page - 1) * pageSize + 1}</span> to{" "}
+                <span className="font-medium">{Math.min(page * pageSize, cards.length)}</span> of{" "}
                 <span className="font-medium">{cards.length}</span> results
               </p>
             </div>
