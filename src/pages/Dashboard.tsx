@@ -9,6 +9,7 @@ import { db } from '@/lib/firebase/config';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { Line } from 'react-chartjs-2'; // Make sure to install react-chartjs-2 and chart.js
 import { useAuth } from "@/context/AuthContext";
+import 'chart.js/auto';
 
 export default function Dashboard() {
   const { data: cards = [], isLoading, error, retryFetchCards } = useCards();

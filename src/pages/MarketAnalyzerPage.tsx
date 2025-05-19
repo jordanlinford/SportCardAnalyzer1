@@ -1191,7 +1191,9 @@ export default function MarketAnalyzerPage() {
     setMarketMetrics(metrics);
     
     // Calculate market scores based on metrics
-    const volatilityScore = Math.max(0, Math.min(100, 50 - (metrics.volatility * 100)));
+    // metrics.volatility is already 0-100 where higher = more volatile (worse).
+    // Turn it into a "stability" score (lower volatility → higher score).
+    const volatilityScore = Math.max(0, Math.min(100, 100 - metrics.volatility));
     const trendScore = Math.max(0, Math.min(100, 50 + (metrics.trend * 50)));
     
     // Use the salesCount from metrics instead of salesPerDay
@@ -1244,8 +1246,8 @@ export default function MarketAnalyzerPage() {
       };
 
       // Use the same API endpoint but with different parameters
-      const apiUrl = API_URL || 'http://localhost:9876';
-      const response = await fetch(`${apiUrl}/scrape-card`, {
+      const apiUrl = API_URL;
+      const response = await fetch(`${apiUrl.replace(/\/$/, '')}/api/text-search`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -2061,8 +2063,7 @@ export default function MarketAnalyzerPage() {
           </div>
 
           {/* Add the Grading Profit Calculator section with a button to load data */}
-          {isSearched && analysisStep === 'analyze' && selectedCard && marketMetrics && 
-           (selectedCard.title?.toLowerCase().includes('raw') || grading.toLowerCase() === 'raw') && (
+          {isSearched && analysisStep === 'analyze' && selectedCard && marketMetrics && (
             <Card className="mt-6 mb-6">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">

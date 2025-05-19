@@ -5,6 +5,7 @@ import path from 'path'
 export default defineConfig({
   server: {
     port: 5135, // Set fixed port
+    strictPort: true,
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

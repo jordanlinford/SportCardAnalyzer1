@@ -104,7 +104,7 @@ export default function ProfilePage() {
     try {
       console.log(`Creating portal session for user: ${user.uid}`);
       
-      const fullApiUrl = `${API_URL}/create-portal-session`;
+      const fullApiUrl = `${API_URL}/api/create-portal-session`;
       console.log(`Using API URL: ${fullApiUrl}`);
       
       const response = await fetch(fullApiUrl, {
@@ -233,7 +233,7 @@ export default function ProfilePage() {
     try {
       console.log(`Creating checkout session for plan ID: ${planId}, userId: ${user.uid}`);
       
-      const fullApiUrl = `${API_URL}/create-checkout-session`;
+      const fullApiUrl = `${API_URL}/api/create-checkout-session`;
       console.log(`Using API URL: ${fullApiUrl}`);
       
       const requestData = { 

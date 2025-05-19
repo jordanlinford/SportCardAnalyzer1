@@ -12,8 +12,11 @@ import path from 'path';
 import vision from '@google-cloud/vision';
 import { scrapeEbay } from './ebayScraperService.js';
 import multer from 'multer';
+import axios from 'axios';
+import Stripe from 'stripe';
 
-dotenv.config();
+// Load .env in this directory, regardless of where node was started
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 app.use(cors());
@@ -23,6 +26,7 @@ app.use(bodyParser.json());
 const serviceAccount = JSON.parse(
   fs.readFileSync(path.join(__dirname, '../credentials/service-account.json'), 'utf8')
 );
+console.log('Using service account:', serviceAccount.client_email);
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
         });
@@ -149,7 +153,171 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+// ---------------------------------------------------------------------------
+//  NEW: Trigger full collection value refresh for a user (fire-and-forget)
+//        POST /api/update-collection/:uid
+// ---------------------------------------------------------------------------
+
+// Heavy worker extracted so it can run independently of the HTTP response
+async function updateCollectionWorker(uid) {
+  const db = admin.firestore();
+
+  // Fetch cards from both "cards" and legacy "collection" sub-collections
+  const cardsSnap      = await db.collection('users').doc(uid).collection('cards').get();
+  const collectionSnap = await db.collection('users').doc(uid).collection('collection').get();
+
+  const allDocs = [...cardsSnap.docs, ...collectionSnap.docs];
+  if (allDocs.length === 0) {
+    console.warn('update-collection: no cards found for', uid);
+    return;
+  }
+
+  // Helper: average of most-recent 3 sale prices
+  const calcAvg = (listings = []) => {
+    if (!listings.length) return null;
+    listings.sort((a, b) => {
+      const da = new Date(a.date || a.dateSold || 0).getTime();
+      const dbt = new Date(b.date || b.dateSold || 0).getTime();
+      return dbt - da;
+    });
+    const recent = listings.slice(0, 3);
+    const total = recent.reduce((s, l) => s + (l.totalPrice || l.price || 0), 0);
+    return total && recent.length ? total / recent.length : null;
+  };
+
+  let updated = 0;
+  let errors  = 0;
+
+  for (const doc of allDocs) {
+    const card = doc.data();
+    const id   = doc.id;
+
+    if (!card.playerName || !card.year || !card.cardSet) continue; // skip incomplete docs
+
+    const fullSearchString = `${card.year} ${card.playerName} ${card.cardSet} ${card.variation || ''} ${card.cardNumber || ''} ${card.condition || ''}`.trim();
+
+    try {
+      let listings = [];
+      try {
+        listings = await scrapeEbay(fullSearchString);
+      } catch (_) {
+        // Fallback to internal endpoint
+        const resp = await axios.post('http://localhost:3001/api/text-search', { query: fullSearchString });
+        listings = resp.data?.listings || [];
+      }
+
+      const avg = calcAvg(listings);
+      if (avg && (!card.currentValue || Math.abs(card.currentValue - avg) > (card.currentValue || 0) * 0.05)) {
+        const parentColl = doc.ref.parent.id; // "cards" or "collection"
+        await db.collection('users').doc(uid).collection(parentColl).doc(id).update({ currentValue: avg });
+        updated++;
+      }
+    } catch (err) {
+      console.warn('update-card error', id, err.message);
+      errors++;
+    }
+
+    // Brief pause to avoid hammering eBay
+    await new Promise(r => setTimeout(r, 800));
+  }
+
+  // Record total collection value snapshot once the loop is done
+  try {
+    const freshCards      = await db.collection('users').doc(uid).collection('cards').get();
+    const freshCollection = await db.collection('users').doc(uid).collection('collection').get();
+    const total = [...freshCards.docs, ...freshCollection.docs].reduce((sum, d) => {
+      const data = d.data();
+      return sum + (data.currentValue || data.price || 0);
+    }, 0);
+
+    await db.collection('users').doc(uid).collection('value_history').add({
+      timestamp : admin.firestore.FieldValue.serverTimestamp(),
+      totalValue: total,
+    });
+  } catch (e) {
+    console.warn('failed to write value_history', e.message);
+  }
+
+  console.log(`update-collection completed for ${uid}: updated ${updated} cards, ${errors} errors`);
+}
+
+// Lightweight endpoint – returns immediately, work continues in background
+app.post('/api/update-collection/:uid', (req, res) => {
+  const { uid } = req.params;
+  if (!uid) {
+    return res.status(400).json({ success: false, message: 'uid param required' });
+  }
+
+  // Fire-and-forget – don't await the promise
+  updateCollectionWorker(uid).catch(err => console.error('updateCollectionWorker error:', err.message));
+
+  // 202 Accepted: processing started but not finished
+  res.status(202).json({ success: true, message: 'Collection value refresh started' });
+});
+
 // Other API routes (e.g., market analysis, Stripe webhooks) go here...
+
+// Stripe setup
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' });
+
+// Create checkout session
+app.post('/api/create-checkout-session', async (req, res) => {
+  try {
+    const { priceId, userId, planName, interval } = req.body;
+    if (!priceId || !userId) {
+      return res.status(400).json({ success: false, message: 'priceId and userId required' });
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      mode: 'subscription',
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
+        },
+      ],
+      metadata: {
+        userId,
+        planName: planName || '',
+        interval: interval || '',
+      },
+      success_url: `${process.env.DOMAIN || 'http://localhost:5173'}/profile?success=true`,
+      cancel_url: `${process.env.DOMAIN || 'http://localhost:5173'}/profile?canceled=true`,
+    });
+
+    return res.json({ success: true, url: session.url });
+  } catch (err) {
+    console.error('Stripe checkout error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Create customer portal session
+app.post('/api/create-portal-session', async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ success: false, message: 'userId required' });
+
+    // You should store stripeCustomerId on user doc when creating checkout session; minimal fallback:
+    const db = admin.firestore();
+    const userDoc = await db.collection('users').doc(userId).get();
+    const customerId = userDoc.data()?.stripeCustomerId;
+    if (!customerId) {
+      return res.status(400).json({ success: false, message: 'No Stripe customer found for user' });
+    }
+
+    const portalSession = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${process.env.DOMAIN || 'http://localhost:5173'}/profile`,
+    });
+
+    return res.json({ success: true, url: portalSession.url });
+  } catch (err) {
+    console.error('Stripe portal error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 // --- static + catch-all afterward ---
 

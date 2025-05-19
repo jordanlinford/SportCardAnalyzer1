@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --port 5135 --strictPort",
     "prepare-logos": "node scripts/prepare-logos.js",
     "prebuild": "npm run prepare-logos",
     "build": "vite build",

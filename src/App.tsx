@@ -12,11 +12,14 @@ import DisplayCasePage from './pages/DisplayCasePage';
 import MarketAnalyzerPage from './pages/MarketAnalyzerPage';
 import TradeAnalyzer from './pages/TradeAnalyzer';
 import SharedTradeView from './pages/SharedTradeView';
-import Home from './pages/index';
+import HomePage from './pages/HomePage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import ProfilePage from './pages/ProfilePage';
 import PricingPage from './pages/PricingPage';
 import ForceGridFix from './pages/ForceGridFix';
+import About from '@/pages/About';
+import Privacy from '@/pages/Privacy';
+import Terms from '@/pages/Terms';
 
 const App: React.FC = () => {
   console.log('App component rendering...');
@@ -27,7 +30,7 @@ const App: React.FC = () => {
         <Routes>
           <Route 
             path="/" 
-            element={<Home />} 
+            element={<HomePage />} 
           />
           <Route 
             path="/display/:publicId" 
@@ -85,6 +88,9 @@ const App: React.FC = () => {
             path="/pricing" 
             element={<PricingPage />} 
           />
+          <Route path="/about" element={<About />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
         </Routes>
       </Layout>
       <Toaster position="top-right" />

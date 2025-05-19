@@ -58,3 +58,6 @@ VITE_FIREBASE_MEASUREMENT_ID=G-YNZTKCHQT0
 VITE_SCRAPER_API=http://localhost:8000
 /credentials/*.json
 server/credentials/service-account.json
+
+# Never commit backend secrets
+server/.env
