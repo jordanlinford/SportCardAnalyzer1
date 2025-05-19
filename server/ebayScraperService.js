@@ -116,6 +116,12 @@ async function scrapeEbay(query, limit = 20) {
     limit
   );
   raw = await ensureImages(raw, browser);
+  raw = raw.filter(itm => {
+    if (!itm.title) return false;
+    if (/SHOP ON EBAY/i.test(itm.title)) return false;
+    if (!itm.imageUrl || itm.imageUrl.trim() === '') return false;
+    return true;
+  });
   await browser.close();
   return raw;
 }

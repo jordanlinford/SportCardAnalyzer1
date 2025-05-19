@@ -63,6 +63,17 @@ const sanitizeOcr = (raw = '') => {
   return txt.split(' ').slice(0, 10).join(' ').trim();
 };
 
+// Normalise incoming query strings
+function normalizeQuery(raw = '') {
+  return raw
+    .toUpperCase()
+    .replace(/\b(?:PSA|BGS|SGC|CGC)\s*\d{1,2}\b/g, '')
+    .replace(/\b(?:GEM\s*MINT|RC|ROOKIE)\b/g, '')
+    .replace(/[()#]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // --- API routes first ---
 
 // After health check endpoint, add lightweight aliases declared first
@@ -74,7 +85,8 @@ app.post('/api/text-search', async (req, res) => {
     if (!query || !query.trim()) {
       return res.status(400).json({ success: false, message: 'query required' });
     }
-    const rawListings = await scrapeEbay(query.trim());
+    const cleaned = normalizeQuery(query);
+    const rawListings = await scrapeEbay(cleaned);
     const listings = rawListings.map(l => ({ ...l, imageUrl: l.imageUrl || l.image || '' }));
     return res.json({ success: true, listings, count: listings.length });
   } catch (err) {
