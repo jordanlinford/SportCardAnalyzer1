@@ -61,3 +61,6 @@ server/credentials/service-account.json
 
 # Never commit backend secrets
 server/.env
+
+# Never commit backend secrets
+server/.env
