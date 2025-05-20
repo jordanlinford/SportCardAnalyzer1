@@ -33,6 +33,8 @@ import { nanoid } from 'nanoid';
 import { useQueryClient } from '@tanstack/react-query';
 import { CardService } from '@/services/CardService';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger, DialogClose } from '@/components/ui/dialog';
+import { getCardMarketData, CardMarketData } from '@/services/MarketDataService';
+import MarketDataBanner from './MarketAnalyzer-Banner'; // Import the banner
 
 // Import eBay scraper utilities
 import { 
@@ -296,13 +298,37 @@ interface CardVariation {
   title: string;
   imageUrl?: string;
   averagePrice: number;
-  listings: any[];
+  listings?: ScrapedListing[];
+  originalTitle?: string;
+  sample?: ScrapedListing[];
+  minPrice?: number;
+  maxPrice?: number;
+  count?: number;
 }
 
 // Add imports
 import { API_URL } from "@/lib/firebase/config";
 
 console.log("[MarketAnalyzerPage] API_URL:", API_URL);
+
+// Helper: extract grade from a listing title (simple regex shared with backend)
+function extractCardNumber(text: string): string {
+  if (!text) return '';
+  const m = text.match(/#?(\d{2,4})(?:[^\d]|$)/);
+  return m ? m[1] : '';
+}
+
+function detectGrade(title: string): string {
+  if (!title) return 'Raw';
+  const standard = title.match(/\b(PSA|BGS|SGC|CGC|CSG|HGA)\s*(?:GEM\s*(?:MINT|MT|-?MT)?\s*)?(\d{1,2}(?:\.5)?)\b/i);
+  if (standard) return `${standard[1].toUpperCase()} ${standard[2]}`;
+
+  const loose = title.match(/\b(PSA|BGS|SGC|CGC|CSG|HGA)[^0-9]{0,6}(10|9(?:\.5)?|8(?:\.5)?)\b/i);
+  if (loose) return `${loose[1].toUpperCase()} ${loose[2]}`;
+
+  if (/RAW|UN ?GRADED/i.test(title)) return 'Raw';
+  return 'Raw';
+}
 
 export default function MarketAnalyzerPage() {
   const { user } = useAuth();
@@ -344,17 +370,9 @@ export default function MarketAnalyzerPage() {
   const [analysisStep, setAnalysisStep] = useState<'search' | 'validate' | 'analyze'>('search');
 
   // Add state for grouped variations
-  const [cardVariations, setCardVariations] = useState<Array<{
-    id: string;
-    title: string;
-    originalTitle: string;
-    imageUrl: string;
-    count: number;
-    averagePrice: number;
-    sample: ScrapedListing[];
-    minPrice: number;
-    maxPrice: number;
-  }>>([]);
+  const [cardVariations, setCardVariations] = useState<CardVariation[]>([]);
+  const [gradeOptions, setGradeOptions] = useState<string[]>([]);
+  const [selectedGrade, setSelectedGrade] = useState<string>('All');
   
   // Add error state
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -534,13 +552,18 @@ export default function MarketAnalyzerPage() {
           const priceSimilarity = Math.abs(currentPrice - comparePrice) / Math.max(currentPrice, comparePrice);
           
           // If prices are within 40% of each other and have similar titles
-          if (priceSimilarity < 0.4 && areSimilarRawCardTitles(currentTitle, compareTitle)) {
+          if (priceSimilarity < 0.3 && areSimilarRawCardTitles(currentTitle, compareTitle)) {
             currentGroup.push(compareListing);
             processed.add(j);
           }
         } else {
           // For graded cards, normal similarity check
           const similarity = calculateTitleSimilarity(currentTitle, compareTitle);
+          
+          // Require same grade when both listings have a detectable grade
+          const sameGrade = (currentListing.grade && compareListing.grade) 
+            ? currentListing.grade === compareListing.grade 
+            : true;
           
           // Calculate price similarity as percentage difference
           const maxPrice = Math.max(currentPrice, comparePrice);
@@ -549,8 +572,8 @@ export default function MarketAnalyzerPage() {
             priceSimilarity = Math.abs(currentPrice - comparePrice) / maxPrice;
           }
           
-          // If titles are similar and prices are within 50% of each other
-          if (similarity > 0.6 && priceSimilarity < 0.5) {
+          // If titles are very similar and prices are reasonably close
+          if (sameGrade && similarity > 0.45 && priceSimilarity < 0.45) {
             currentGroup.push(compareListing);
             processed.add(j);
           }
@@ -884,6 +907,89 @@ export default function MarketAnalyzerPage() {
     try {
       console.log(`Searching for: ${searchQuery}`);
 
+      // Extract card number, year and grade if present in search query
+      const cardNumber = extractCardNumber(searchQuery);
+      const yearMatch = searchQuery.match(/\b(19|20)\d{2}\b/);
+      const year = yearMatch ? yearMatch[0] : undefined;
+      const gradeMatch = searchQuery.match(/\b(PSA|BGS|SGC|CGC|CSG|HGA)\s*(?:GEM\s*(?:MINT|MT|-?MT)?\s*)?(10|9(?:\.5)?|8(?:\.5)?)\b/i);
+      const grade = gradeMatch ? `${gradeMatch[1].toUpperCase()} ${gradeMatch[2]}` : 
+                    (grading && grading !== "any" ? grading : undefined);
+      
+      // Try to get data from Firebase first
+      console.log('Checking for market data in Firebase...', {cardNumber, year, grade});
+      const marketData = await getCardMarketData(
+        searchQuery.split(' ')[0], // First word as player name (simple approach)
+        cardNumber,
+        year,
+        grade
+      );
+      
+      // If we have market data in Firebase, use that instead of scraping
+      if (marketData && marketData.length > 0) {
+        console.log('✅ Found market data in Firebase:', marketData);
+        
+        // Convert to card variations format
+        const variations = marketData.map(card => ({
+          id: card.id,
+          title: `${card.year} ${card.player} #${card.cardNumber} ${card.grade}`,
+          originalTitle: `${card.year} ${card.player} #${card.cardNumber} ${card.grade}`,
+          price: card.metrics.averagePrice,
+          averagePrice: card.metrics.averagePrice,
+          minPrice: card.metrics.minPrice,
+          maxPrice: card.metrics.maxPrice,
+          grade: card.grade,
+          count: card.metrics.count,
+          sample: card.sales.map((sale, idx) => ({
+            id: `${card.id}-${idx}`,
+            title: `${card.year} ${card.player} #${card.cardNumber} ${card.grade}`,
+            price: sale.price,
+            dateSold: sale.date.split('T')[0],
+            imageUrl: '', // No images in our simple database 
+            grade: card.grade,
+            // Add missing properties required by ScrapedListing type
+            shipping: 0,
+            date: sale.date,
+            url: '',
+            totalPrice: sale.price
+          }))
+        }));
+        
+        setCardVariations(variations);
+        if (variations.length > 0) {
+          // Create a card result for displaying
+          const cardResult: CardResult = {
+            id: nanoid(),
+            playerName: searchQuery,
+            year: year || "",
+            cardSet: "",
+            grade: grade || "Any",
+            condition: grade ? "graded" : "raw",
+            averagePrice: variations[0].averagePrice,
+            lastSold: variations[0].sample?.[0]?.dateSold || new Date().toISOString().split("T")[0],
+            listings: variations[0].sample || [],
+            title: variations[0].title
+          };
+          
+          setResults([cardResult]);
+          setSelectedCard(cardResult);
+          setIsSearched(true);
+          setAnalysisStep('validate');
+          
+          // Scroll to results
+          setTimeout(() => {
+            document.getElementById("results")?.scrollIntoView({
+              behavior: "smooth",
+            });
+          }, 500);
+          
+          setIsLoading(false);
+          return;
+        }
+      }
+      
+      // If we don't have Firebase data or it's empty, fall back to eBay scraping
+      console.log('⚠️ No data in Firebase, falling back to eBay scraper');
+
       // Create search payload
       const payload: {
         playerName: string;
@@ -891,10 +997,12 @@ export default function MarketAnalyzerPage() {
         negKeywords: string[];
         grade?: string;
         conditionFilter?: string;
+        limit?: number;
       } = {
         playerName: searchQuery,
         query: searchQuery,
         negKeywords: ["lot", "reprint", "digital", "case", "break"],
+        limit: 80,
       };
 
       // Add grade if specified
@@ -934,7 +1042,22 @@ export default function MarketAnalyzerPage() {
         throw new Error(`Server responded with ${response.status}`);
       }
 
-      const data = await response.json();
+      let data = await response.json();
+
+      // Fallback: if a graded query returns zero, retry without the grade
+      const gradeRegex = /(PSA|BGS|SGC|CGC|CSG|HGA)\s*\d+/i;
+      if (data.success && (data.listings?.length || 0) === 0 && gradeRegex.test(searchQuery)) {
+        console.log('No graded comps found – retrying raw search');
+        const rawPayload = { ...payload };
+        delete rawPayload.grade;
+        rawPayload.query = searchQuery.replace(gradeRegex, '').trim();
+        const resp2 = await fetch(`${apiUrl.replace(/\/$/, '')}/api/text-search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(rawPayload),
+        });
+        if (resp2.ok) data = await resp2.json();
+      }
 
       if (!data.success) {
         throw new Error(data.message || "Failed to fetch card data");
@@ -1171,8 +1294,8 @@ export default function MarketAnalyzerPage() {
       condition: grading === "ungraded" ? "raw" : "graded",
       variation: selectedVariation.title,
       averagePrice: selectedVariation.averagePrice,
-      lastSold: selectedVariation.sample[0]?.dateSold || new Date().toISOString().split("T")[0],
-      listings: selectedVariation.sample,
+      lastSold: selectedVariation.sample?.[0]?.dateSold || new Date().toISOString().split("T")[0],
+      listings: selectedVariation.sample ?? [],
       imageUrl: selectedVariation.imageUrl,
       title: selectedVariation.title
     };
@@ -1184,10 +1307,10 @@ export default function MarketAnalyzerPage() {
     
     // Generate price history data points - properly handling type issues
     const isRaw = grading === "ungraded";
-    extractPriceHistory(selectedVariation.sample, isRaw, selectedVariation.averagePrice);
+    extractPriceHistory(selectedVariation.sample || [], isRaw, selectedVariation.averagePrice);
     
     // Calculate market metrics
-    const metrics = calculateMarketMetrics(selectedVariation.sample);
+    const metrics = calculateMarketMetrics(selectedVariation.sample || []);
     setMarketMetrics(metrics);
     
     // Calculate market scores based on metrics
@@ -1206,7 +1329,7 @@ export default function MarketAnalyzerPage() {
     });
     
     // Generate price predictions based on current metrics
-    const pricePredictions = predictFuturePrices(selectedVariation.sample, selectedVariation.averagePrice);
+    const pricePredictions = predictFuturePrices(selectedVariation.sample || [], selectedVariation.averagePrice);
     setPredictions(pricePredictions);
     
     // Generate recommendation based on metrics
@@ -1242,7 +1365,8 @@ export default function MarketAnalyzerPage() {
         playerName: searchQuery,
         query: `${searchQuery} PSA 9 PSA 10`,
         negKeywords: ["lot", "reprint", "digital", "case", "break", "raw", "ungraded"],
-        grade: "PSA 9 PSA 10"
+        grade: "PSA 9 PSA 10",
+        limit: 80
       };
 
       // Use the same API endpoint but with different parameters
@@ -1475,9 +1599,26 @@ export default function MarketAnalyzerPage() {
     }
   };
 
+  // Reprocess variations whenever the selected grade changes
+  useEffect(() => {
+    if (!isSearched) return;
+    const allListings: any[] = originalListings.current || [];
+    if (!allListings.length) return;
+    const filtered = selectedGrade === 'All' ? allListings : allListings.filter(l => detectGrade(l.title || '') === selectedGrade);
+    processScrapedListings(filtered, {
+      playerName: searchQuery,
+      year: '',
+      cardSet: '',
+      variation: '',
+      grade: selectedGrade,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedGrade]);
+
   // Render the component...
   return (
     <div className="container py-6">
+      <MarketDataBanner />
       <h1 className="text-3xl font-bold mb-6">Market Analyzer</h1>
       
       {/* Search Form */}
@@ -1585,15 +1726,15 @@ export default function MarketAnalyzerPage() {
                         />
                       </div>
                       <h3 className="font-semibold text-sm line-clamp-2 mt-1">{variation.title}</h3>
-                      <div className="text-xs text-gray-500 line-clamp-1" title={variation.originalTitle}>
-                        {limitTitleLength(variation.originalTitle, 40)}
+                      <div className="text-xs text-gray-500 line-clamp-1" title={variation.originalTitle || ''}>
+                        {limitTitleLength(variation.originalTitle || '', 40)}
                       </div>
                       <div className="flex justify-between items-center mt-1">
                         <span className="text-sm text-gray-500">{variation.count} sales</span>
                         <span className="text-lg font-bold">${variation.averagePrice.toFixed(2)}</span>
                       </div>
                       <div className="text-xs text-gray-500 flex justify-between">
-                        <span>Range: ${variation.minPrice.toFixed(2)} - ${variation.maxPrice.toFixed(2)}</span>
+                        <span>Range: ${(variation.minPrice ?? 0).toFixed(2)} - ${(variation.maxPrice ?? 0).toFixed(2)}</span>
                       </div>
                       <Button 
                         className="w-full mt-2" 

@@ -29,8 +29,13 @@ function normalizeTitle(title) {
 
 // Utility: extract grade (PSA/BGS/SGC) or mark as Raw
 function extractGrade(title) {
-  const m = title.match(/\b(PSA|BGS|SGC)\s*(\d+)\b/i);
-  return m ? `${m[1].toUpperCase()} ${m[2]}` : 'Raw';
+  if (!title) return 'Raw';
+  const standard = title.match(/\b(PSA|BGS|SGC|CGC|CSG|HGA)\s*(?:GEM\s*(?:MINT|MT|-?MT)?\s*)?(10|9(?:\.5)?|8(?:\.5)?)\b/i);
+  if (standard) return `${standard[1].toUpperCase()} ${standard[2]}`;
+  const noSpace = title.match(/\b(PSA|BGS|SGC|CGC|CSG|HGA)(10|9(?:\.5)?|8(?:\.5)?)\b/i);
+  if (noSpace) return `${noSpace[1].toUpperCase()} ${noSpace[2]}`;
+  if (/RAW|UN ?GRADED/i.test(title)) return 'Raw';
+  return 'Raw';
 }
 
 // Group items into variations
@@ -72,58 +77,183 @@ async function fetchOgImage(browser, itemUrl) {
 }
 
 // Core: scrape by text query
-async function scrapeEbay(query, limit = 20) {
-  const url = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}`;
-  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
-  const page = await browser.newPage();
-  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64)...');
-  await page.goto(url, { waitUntil: 'networkidle2', timeout: 0 });
-
-  // Scroll down to trigger lazy-loaded thumbnails
-  await page.evaluate(async () => {
-    await new Promise(res => {
-      let total = 0;
-      const step = 600;
-      const timer = setInterval(() => {
-        window.scrollBy(0, step);
-        total += step;
-        if (total > 2400) { // ~4 screens
-          clearInterval(timer);
-          res();
-        }
-      }, 200);
+async function scrapeEbay(query, limit = 120) {
+  // Helper to scrape a single URL and return items (used twice)
+  async function fetchPage(searchUrl, statusTag = 'sold') {
+    const browser = await puppeteer.launch({ 
+      headless: "new", // Use new headless mode
+      args: ['--no-sandbox', '--disable-setuid-sandbox'] 
     });
-  });
+    const page = await browser.newPage();
+    
+    // Use a more modern user agent
+    await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36');
+    
+    // Add viewport settings
+    await page.setViewport({ width: 1280, height: 800 });
 
-  // give images a moment to populate data-src
-  await page.waitForTimeout(1200);
+    // DEBUG: see where Puppeteer is going
+    console.log('➡️  navigating to', searchUrl);
 
-  let raw = await page.$$eval(
-    '.s-item',
-    (els, lim) => els.slice(0, lim).map(el => {
-      const title = el.querySelector('.s-item__title')?.innerText;
-      const priceText = el.querySelector('.s-item__price')?.innerText || '';
-      const price = parseFloat(priceText.replace(/[^0-9\.]/g, '')) || null;
-      // eBay lazy-loads: sometimes the real URL is in data-src; fall back to src
-      const imgEl = el.querySelector('img.s-item__image-img');
-      let image = imgEl?.getAttribute('src') || imgEl?.getAttribute('data-src') || '';
-      if (image && image.startsWith('//')) image = 'https:' + image; // protocol-relative → https
-      if (image.includes('trans_1x1') || image.endsWith('.gif')) image = imgEl?.getAttribute('data-src') || '';
-      const href = el.querySelector('.s-item__link')?.href;
-      const idMatch = href?.match(/\/(\d+)(?:\?|$)/);
-      return { itemId: idMatch?.[1] || null, title, price, imageUrl: image, itemHref: href };
-    }),
-    limit
-  );
-  raw = await ensureImages(raw, browser);
-  raw = raw.filter(itm => {
+    try {
+      await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+      
+      // Wait for listing items to load
+      await page.waitForSelector('.srp-results .s-item__pl-on-bottom', { timeout: 10000 })
+        .catch(() => console.log('Warning: Timing out waiting for listings'));
+      
+      // Scroll to trigger lazy loading
+      await page.evaluate(async () => {
+        await new Promise(res => {
+          let total = 0;
+          const step = 600;
+          const timer = setInterval(() => {
+            window.scrollBy(0, step);
+            total += step;
+            if (total > 5000) { // Scroll more for modern pages
+              clearInterval(timer);
+              res();
+            }
+          }, 200);
+        });
+      });
+
+      await page.waitForTimeout(1500);
+
+      // Try multiple selectors based on eBay's different listing formats
+      const results = await page.evaluate((lim, tag) => {
+        // Try various eBay listing selectors - they change frequently
+        const selectors = [
+          '.srp-results .s-item__pl-on-bottom', // Modern layout
+          '.srp-results .s-item',              // Alternative layout
+          '.b-list__items .s-item',           // Old layout
+          '[data-view="mi:1686|iid:1"]'        // Very new layout
+        ];
+        
+        let items = [];
+        
+        // Try each selector until we find listings
+        for (const selector of selectors) {
+          const elements = document.querySelectorAll(selector);
+          if (elements && elements.length > 0) {
+            items = Array.from(elements).slice(0, lim).map(el => {
+              // Extract title with fallbacks
+              const titleEl = el.querySelector('.s-item__title') || 
+                             el.querySelector('[role="heading"]') ||
+                             el.querySelector('h3');
+              const title = titleEl?.innerText?.replace('New Listing', '').trim();
+              
+              // Extract price with fallbacks
+              const priceEl = el.querySelector('.s-item__price') || 
+                             el.querySelector('.x-price') ||
+                             el.querySelector('[data-testid="price"]');
+              const priceText = priceEl?.innerText || '';
+              const price = parseFloat(priceText.replace(/[^0-9\.]/g, '')) || null;
+              
+              // Extract image with multiple fallbacks
+              const imgEl = el.querySelector('.s-item__image-img') || 
+                           el.querySelector('.image img') ||
+                           el.querySelector('[data-testid="itemImage"] img');
+              
+              let image = '';
+              if (imgEl) {
+                // Try multiple attributes where image might be
+                image = imgEl.getAttribute('src') || 
+                        imgEl.getAttribute('data-src') || 
+                        imgEl.getAttribute('srcset')?.split(' ')[0] || '';
+              }
+              
+              // Fix protocol-relative URLs
+              if (image && image.startsWith('//')) image = 'https:' + image;
+              
+              // Skip placeholder/transparent images
+              if (image && (image.includes('trans_1x1') || image.endsWith('.gif'))) {
+                image = imgEl?.getAttribute('data-src') || '';
+              }
+              
+              // Extract link with fallbacks
+              const linkEl = el.querySelector('.s-item__link') || 
+                            el.querySelector('a[href*="itm/"]') ||
+                            el.querySelector('[data-testid="itemCard"] a');
+              const href = linkEl?.href;
+              
+              // Extract ID from URL
+              const idMatch = href?.match(/\/(\d+)(?:\?|$)/);
+              const itemId = idMatch?.[1] || null;
+              
+              // Extract sold date if available
+              const dateEl = el.querySelector('.s-item__endedDate, .s-item__sold-date') ||
+                           el.querySelector('[data-testid="itemEndDate"]');
+              const dateText = dateEl?.innerText || '';
+              // Current date fallback
+              const now = new Date().toISOString().split('T')[0];
+              const soldDate = dateText.replace(/Sold\s+|Ended\s+/i, '').trim() || now;
+              
+              // Extract shipping if available
+              const shippingEl = el.querySelector('.s-item__shipping, .s-item__freeXDays') ||
+                               el.querySelector('[data-testid="itemShipping"]');
+              const shippingText = shippingEl?.innerText || '';
+              // Extract shipping cost or 0 for free shipping
+              let shipping = 0;
+              if (shippingText && !shippingText.toLowerCase().includes('free')) {
+                const shippingMatch = shippingText.match(/(\d+\.\d+)/);
+                if (shippingMatch) shipping = parseFloat(shippingMatch[1]);
+              }
+              
+              return { 
+                itemId, 
+                title, 
+                price, 
+                shipping,
+                totalPrice: price + shipping,
+                imageUrl: image, 
+                itemHref: href, 
+                dateSold: soldDate,
+                date: now,
+                status: tag 
+              };
+            });
+            // If we found items with this selector, break the loop
+            break;
+          }
+        }
+        
+        // Filter out invalid items
+        return items.filter(item => item.title && item.price && item.itemId);
+        
+      }, limit, statusTag);
+
+      await browser.close();
+      return results || [];
+    } catch (error) {
+      console.error(`Error scraping ${searchUrl}:`, error);
+      await browser.close();
+      return [];
+    }
+  }
+
+  const soldUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&_sop=13&LH_Sold=1&LH_Complete=1`;
+  let items = await fetchPage(soldUrl, 'sold');
+  console.log(`  ↳ Found ${items.length} sold listings`);
+
+  // Fallback to active listings if too few sold comps
+  if (items.length < 5) {
+    console.log('  ↳ Not enough sold listings, adding active listings...');
+    const activeUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}`;
+    const active = await fetchPage(activeUrl, 'active');
+    console.log(`  ↳ Found ${active.length} active listings`);
+    items = items.concat(active);
+  }
+
+  // Basic clean-up
+  items = items.filter(itm => {
     if (!itm.title) return false;
-    if (/SHOP ON EBAY/i.test(itm.title)) return false;
-    if (!itm.imageUrl || itm.imageUrl.trim() === '') return false;
+    if (/SHOP ON EBAY|Shop on eBay/i.test(itm.title)) return false;
     return true;
   });
-  await browser.close();
-  return raw;
+
+  console.log(`  ↳ Returning ${items.length} total listings`);
+  return items.slice(0, limit);
 }
 
 // Patch missing images by visiting listing pages (slow-path only for blanks)

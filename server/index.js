@@ -67,9 +67,12 @@ const sanitizeOcr = (raw = '') => {
 function normalizeQuery(raw = '') {
   return raw
     .toUpperCase()
+    // strip explicit grade numbers so we don\'t over-restrict ebay text search
     .replace(/\b(?:PSA|BGS|SGC|CGC)\s*\d{1,2}\b/g, '')
     .replace(/\b(?:GEM\s*MINT|RC|ROOKIE)\b/g, '')
-    .replace(/[()#]/g, ' ')
+    // keep the # symbol by turning it into a space-separated token instead of deleting it
+    .replace(/[()]/g, ' ')
+    .replace(/#/g, ' #')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -81,13 +84,18 @@ function normalizeQuery(raw = '') {
 // Simple aliases declared early so they take precedence
 app.post('/api/text-search', async (req, res) => {
   try {
-    const { query } = req.body || {};
+    const { query, limit: limitParam } = req.body || {};
     if (!query || !query.trim()) {
       return res.status(400).json({ success: false, message: 'query required' });
     }
     const cleaned = normalizeQuery(query);
-    const rawListings = await scrapeEbay(cleaned);
-    const listings = rawListings.map(l => ({ ...l, imageUrl: l.imageUrl || l.image || '' }));
+    const limit = Math.min(parseInt(limitParam, 10) || 60, 100);
+    const rawListings = await scrapeEbay(cleaned, limit);
+    const listings = rawListings.map(l => ({ 
+      ...l, 
+      imageUrl: l.imageUrl || l.image || '',
+      grade: detectGrade(l.title || '')
+    }));
     return res.json({ success: true, listings, count: listings.length });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -348,3 +356,17 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+function detectGrade(title = '') {
+  if (!title) return 'Raw';
+  // Capture patterns like "PSA 10", "PSA GEM MINT 10", "PSA GEM-MT 10", etc.
+  const standard = title.match(/\b(PSA|BGS|SGC|CGC|CSG|HGA)\s*(?:GEM\s*(?:MINT|MT|-?MT)?\s*)?(\d{1,2}(?:\.5)?)\b/i);
+  if (standard) return `${standard[1].toUpperCase()} ${standard[2]}`;
+
+  // Fallback: look for brand then any non-digit chars then a grade number
+  const loose = title.match(/\b(PSA|BGS|SGC|CGC|CSG|HGA)[^0-9]{0,6}(10|9(?:\.5)?|8(?:\.5)?)\b/i);
+  if (loose) return `${loose[1].toUpperCase()} ${loose[2]}`;
+
+  if (/RAW|UN ?GRADED/i.test(title)) return 'Raw';
+  return 'Raw';
+}

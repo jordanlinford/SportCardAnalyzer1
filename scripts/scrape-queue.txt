@@ -1,0 +1,28 @@
+2020 Prizm Justin Jefferson #398 PSA 10
+2023 Donruss Bijan Robinson #305 PSA 10
+2023 Prizm Anthony Richardson #343 PSA 10
+2023 Panini Mosaic Trevor Lawrence #152 PSA 10
+2020 Mosaic Joe Burrow #201 PSA 10
+2020 Prizm Tua Tagovailoa #346 PSA 10
+2023 Prizm Bryce Young #311 PSA 10
+2023 Prizm Will Levis #350 PSA 10
+2021 Prizm Mac Jones #363 PSA 10
+2020 Prizm Justin Herbert #325 PSA 10
+2020 Prizm Jalen Hurts #344 PSA 10
+2021 Prizm Trevor Lawrence #265 PSA 10
+2020 Prizm Joe Burrow #307 PSA 10
+2018 Prizm Josh Allen #206 PSA 10
+2017 Prizm Patrick Mahomes #269 PSA 10
+# Add raw card variants
+2023 Prizm Anthony Richardson #343 Raw
+2020 Prizm Justin Jefferson #398 Raw
+2020 Prizm Joe Burrow #307 Raw
+2023 Prizm Bryce Young #311 Raw
+# Add PSA 9 variants
+2020 Prizm Justin Jefferson #398 PSA 9
+2020 Prizm Joe Burrow #307 PSA 9
+2023 Prizm Bryce Young #311 PSA 9
+# Add some basketball
+2020 Prizm LaMelo Ball #278 PSA 10
+2020 Prizm Anthony Edwards #258 PSA 10
+2018 Prizm Luka Doncic #280 PSA 10 
