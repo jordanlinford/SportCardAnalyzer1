@@ -441,8 +441,6 @@ interface CardVariation {
 // Add imports
 import { API_URL } from "@/lib/firebase/config";
 
-console.log("[MarketAnalyzerPage] API_URL:", API_URL);
-
 // Helper: extract grade from a listing title (simple regex shared with backend)
 function extractCardNumber(text: string): string {
   if (!text) return '';
@@ -522,7 +520,7 @@ export default function MarketAnalyzerPage() {
   const { addCardToTrade } = useTradeContext();
   
   // Add an emergency debug state
-  const [debugMode, setDebugMode] = useState(true);
+  // Debug mode removed
   
   // Form state
   const [playerName, setPlayerName] = useState("");
@@ -2026,149 +2024,9 @@ export default function MarketAnalyzerPage() {
   // Render the component...
   return (
     <div className="container py-6">
-      {/* ULTRA-SIMPLIFIED DEBUG: Pure HTML image loading test */}
-      {debugMode && (
-        <div className="mb-6 p-4 bg-white border-2 border-red-500 rounded-md">
-          <div className="flex justify-between mb-2">
-            <h2 className="text-lg font-bold text-red-600">🚨 FINAL IMAGE DEBUG TEST 🚨</h2>
-            <button 
-              onClick={() => setDebugMode(false)}
-              className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
-            >
-              Hide Debug
-            </button>
-          </div>
-          
-          <div className="grid grid-cols-3 gap-4">
-            {/* Test 1: Direct image with no proxying or React components */}
-            <div>
-              <h3 className="text-sm font-bold mb-1">Direct IMG Tag:</h3>
-              <img 
-                src="https://i.imgur.com/oKGYBmz.jpg" 
-                alt="Jefferson PSA 10" 
-                style={{
-                  border: '2px solid green',
-                  maxWidth: '100%',
-                  height: 'auto',
-                  maxHeight: '200px',
-                  objectFit: 'contain'
-                }}
-              />
-              <p className="text-xs mt-1">Direct Imgur Image 1</p>
-            </div>
-            
-            {/* Test 2: Another direct image */}
-            <div>
-              <h3 className="text-sm font-bold mb-1">Direct IMG Tag 2:</h3>
-              <img 
-                src="https://i.imgur.com/UDYJvtG.jpg" 
-                alt="Jefferson PSA 9" 
-                style={{
-                  border: '2px solid green',
-                  maxWidth: '100%',
-                  height: 'auto',
-                  maxHeight: '200px',
-                  objectFit: 'contain'
-                }}
-              />
-              <p className="text-xs mt-1">Direct Imgur Image 2</p>
-            </div>
-            
-            {/* Test 3: HardcodedCardImage Component */}
-            <div>
-              <h3 className="text-sm font-bold mb-1">HardcodedCardImage:</h3>
-              <div style={{ height: '200px', border: '2px solid blue' }}>
-                <HardcodedCardImage title="Justin Jefferson PSA 10" grade="PSA 10" />
-              </div>
-              <p className="text-xs mt-1">HardcodedCardImage Component</p>
-            </div>
-            
-            {/* Test 4: VariationImage Component */}
-            <div>
-              <h3 className="text-sm font-bold mb-1">VariationImage:</h3>
-              <div style={{ height: '200px', border: '2px solid orange' }}>
-                <VariationImage 
-                  src="https://i.imgur.com/UDYJvtG.jpg"
-                  alt="Jefferson PSA 9"
-                />
-              </div>
-              <p className="text-xs mt-1">VariationImage Component</p>
-            </div>
-            
-            {/* Test 5: SVG Image */}
-            <div>
-              <h3 className="text-sm font-bold mb-1">SVG Fallback:</h3>
-              <img 
-                src="data:image/svg+xml,%3Csvg width='200' height='200' viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='200' height='200' fill='%23f8f9fa'/%3E%3Ctext x='50%25' y='50%25' font-family='Arial' font-size='16' fill='%23212529' text-anchor='middle'%3ESports Card%3C/text%3E%3C/svg%3E" 
-                alt="SVG Fallback" 
-                style={{
-                  border: '2px solid red',
-                  width: '100%',
-                  height: 'auto',
-                  maxHeight: '200px'
-                }}
-              />
-              <p className="text-xs mt-1">SVG Fallback</p>
-            </div>
-            
-            {/* Test 6: PlaceHolder Image */}
-            <div>
-              <h3 className="text-sm font-bold mb-1">Placeholder.co:</h3>
-              <img 
-                src="https://placehold.co/400x600/f4f4f7/222222?text=Card+Image" 
-                alt="Placeholder" 
-                style={{
-                  border: '2px solid purple',
-                  width: '100%',
-                  height: 'auto',
-                  maxHeight: '200px'
-                }}
-              />
-              <p className="text-xs mt-1">Placeholder.co Image</p>
-            </div>
-          </div>
-        </div>
-      )}
 
       <MarketDataBanner />
       <h1 className="text-3xl font-bold mb-6">Market Analyzer</h1>
-      
-      {/* Debug Image Tests - Will be visible at the top of the page */}
-      <div className="mb-6 p-4 bg-gray-100 border border-gray-200 rounded">
-        <h3 className="font-bold mb-2">Debug Images:</h3>
-        <div className="flex gap-4">
-          <div>
-            <p className="text-xs mb-1">Direct eBay Image:</p>
-            <img 
-              src="https://i.ebayimg.com/images/g/mVwAAOSwsjVkTBkq/s-l1600.jpg" 
-              alt="Debug Image 1" 
-              width="100" 
-              height="150"
-              style={{ border: "2px solid blue" }}
-            />
-          </div>
-          <div>
-            <p className="text-xs mb-1">Proxied eBay Image:</p>
-            <img 
-              src={`${API_URL}/api/image-proxy?url=${encodeURIComponent("https://i.ebayimg.com/images/g/mVwAAOSwsjVkTBkq/s-l1600.jpg")}`} 
-              alt="Debug Image 2" 
-              width="100" 
-              height="150"
-              style={{ border: "2px solid red" }}
-            />
-          </div>
-          <div>
-            <p className="text-xs mb-1">Regular Image:</p>
-            <img 
-              src="https://picsum.photos/100/150" 
-              alt="Debug Image 3" 
-              width="100" 
-              height="150"
-              style={{ border: "2px solid green" }}
-            />
-          </div>
-        </div>
-      </div>
       
       {/* Search Form */}
       <Card className="mb-6">
@@ -3264,8 +3122,6 @@ const EnhancedCardImage = ({ title, grade, className = "" }: { title?: string; g
 
 // Define VariationImage component near top (after CardImage)
 const VariationImage = ({ src, alt = "Card", className = "" }: { src?: string; alt?: string; className?: string }) => {
-  // Log image source for debugging
-  console.log('FINAL ATTEMPT - Rendering VariationImage with src:', src?.substring(0, 100));
   
   // Special handling for Jefferson cards - use direct imgur links that won't be blocked
   const isJefferson = alt?.toLowerCase().includes('jefferson');
@@ -3313,7 +3169,6 @@ const VariationImage = ({ src, alt = "Card", className = "" }: { src?: string; a
           display: 'block'
         }}
         onError={(e) => {
-          console.error('ERROR LOADING IMAGE:', directImgSrc);
           // On error, use direct fallback
           e.currentTarget.src = "https://placehold.co/400x600/f4f4f7/222222?text=Card+Image";
         }}
@@ -3341,57 +3196,4 @@ const VariationImage = ({ src, alt = "Card", className = "" }: { src?: string; a
   );
 };
 
-const fetchCardData = async (query: string) => {
-  setIsLoading(true);
-  setError('');
-  setDataSource('');
-  setLastUpdated(null);
-  
-  try {
-    console.log(`Fetching data for query: ${query}`);
-    const response = await axios.post(`${API_URL}/api/market-analyze`, {
-      searchQuery: query
-    });
-    
-    console.log('Market analysis response:', response.data);
-    
-    const { success, listings, source, count, fuzzyMatch, actualQuery, cardInfo, message } = response.data;
-    
-    if (success && listings && listings.length > 0) {
-      // Store the data source for display
-      setDataSource(source || 'unknown');
-      
-      // If we have card info with last updated timestamp
-      if (cardInfo?.lastUpdated) {
-        // Firestore timestamps come as seconds
-        if (typeof cardInfo.lastUpdated === 'object' && cardInfo.lastUpdated._seconds) {
-          setLastUpdated(new Date(cardInfo.lastUpdated._seconds * 1000));
-        } else if (cardInfo.lastUpdated) {
-          // Handle regular date string
-          setLastUpdated(new Date(cardInfo.lastUpdated));
-        }
-      }
-      
-      // If it was a fuzzy match, show a message
-      if (fuzzyMatch && actualQuery) {
-        toast.info(`Showing results for "${actualQuery}" (best match for your search)`);
-      }
-      
-      setHistoricalPrices(processListingsData(listings));
-      setPriceRanges(calculatePriceRanges(listings));
-      setListings(listings);
-      setRecommendation(generateRecommendation(listings, query));
-      setMarketInsights(generateMarketInsights(listings));
-      setInitialLoadComplete(true);
-    } else {
-      setError(message || 'No results found');
-      toast.error(message || 'No results found. Try a different search term.');
-    }
-  } catch (err) {
-    console.error('Error fetching card data:', err);
-    setError('Failed to fetch data');
-    toast.error('Failed to fetch data. Please try again later.');
-  } finally {
-    setIsLoading(false);
-  }
-};
+// The fetchCardData function was moved inside the main component
