@@ -53,119 +53,52 @@ export function EbayCardSearch({ onAddCard }: EbayCardSearchProps) {
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!searchQuery.trim()) {
-      toast.error('Please enter a search term');
-      return;
-    }
-    
-    setLoading(true);
-    setSearchResults([]);
-    setSearchError(null);
+    if (!searchQuery.trim()) return;
     
     try {
-      // Log query for debugging
-      console.log("Card search query:", searchQuery.trim());
+      setLoading(true);
+      setSearchError('');
+      setSearchResults([]);
       
-      // Tell user we're connecting
-      toast.info('Connecting to eBay scraper...');
+      let fullQuery = searchQuery;
+      if (grading !== 'any') {
+        fullQuery += ` ${grading}`;
+      }
       
-      // Test health endpoint first
-      try {
-        const healthResponse = await axios.get('http://localhost:3001/api/health');
-        console.log("Health check response:", healthResponse.data);
-        toast.success('Connected to scraper server');
-      } catch (healthError) {
-        console.error("Health check failed:", healthError);
-        toast.error('Could not connect to scraper server. Make sure it is running.');
-        setSearchError('Server connection error: The eBay scraper server is not running or not accessible. Please start the server by running "node server/scraper.js" from the project root.');
-        setLoading(false);
+      // Call the eBay scraping API
+      const response = await fetch(`/api/ebay-search?q=${encodeURIComponent(fullQuery)}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to search eBay: ${response.status} ${response.statusText}`);
+      }
+      
+      const data: ScrapeResponse = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.listings?.[0]?.title || 'Search failed');
+      }
+      
+      if (data.listings.length === 0) {
+        setSearchError('No results found. Try a different search query.');
         return;
       }
       
-      // Make the request to new scraper endpoint
-      const response = await axios.post<ScrapeResponse>(`${API_URL.replace(/\/$/, '')}/api/text-search`, {
-        query: searchQuery.trim()
+      // Process the listings to ensure images use the proxy
+      const processedListings = data.listings.map((listing) => {
+        if (listing.imageUrl && listing.imageUrl.includes('ebayimg.com')) {
+          // Use the image proxy to avoid CORS issues
+          listing.imageUrl = `/api/image-proxy?url=${encodeURIComponent(listing.imageUrl)}`;
+        }
+        return listing;
       });
       
-      console.log("Received scraper response:", response.data);
+      // Group and process the listings
+      const groupedResults = processScrapedListings(processedListings);
+      setSearchResults(groupedResults);
       
-      if (response.data && response.data.listings && response.data.listings.length > 0) {
-        // Group and process listings
-        const processedResults = processScrapedListings(response.data.listings);
-        setSearchResults(processedResults);
-        
-        if (processedResults.length === 0) {
-          setSearchError('No results found. Try different search terms.');
-          toast.info('No results found. Try different search terms.');
-        } else {
-          toast.success(`Found ${processedResults.length} result groups`);
-        }
-        
-        // Check if the data is synthetic
-        if (response.data.isSynthetic) {
-          setSearchError('Limited sales data available. Showing estimated values.');
-          toast.info('Limited sales data available. Showing estimated values.');
-        }
-      } else {
-        setSearchError('No results found. Try different search terms.');
-        toast.info('No results found. Try different search terms.');
-      }
-    } catch (error: any) {
-      console.error('Error searching for cards:', error);
-      
-      let errorMessage = 'Error searching for cards. Please try again.';
-      
-      // Extract error details if available
-      if (error.response) {
-        console.error('Error response:', error.response.data);
-        if (error.response.data && error.response.data.message) {
-          errorMessage = `Error: ${error.response.data.message}`;
-        }
-      } else if (error.request) {
-        console.error('No response received:', error.request);
-        errorMessage = 'Server connection error: No response received. Make sure the scraper server is running.';
-      } else {
-        console.error('Error message:', error.message);
-        errorMessage = `Error: ${error.message}`;
-      }
-      
-      setSearchError(errorMessage);
-      toast.error(errorMessage);
-      
-      // Generate fallback for raw cards
-      if (grading === 'Raw') {
-        toast.info('Showing estimated data for raw cards');
-        setSearchError('Error connecting to the server. Showing estimated data.');
-        
-        // Generate synthetic data
-        const syntheticListings: ScrapedListing[] = [];
-        const now = new Date();
-        const basePrice = 20;
-        
-        for (let i = 0; i < 3; i++) {
-          const daysAgo = 7 + (i * 10);
-          const date = new Date(now);
-          date.setDate(date.getDate() - daysAgo);
-          
-          const priceVariation = (Math.random() * 0.2) - 0.1;
-          const price = basePrice * (1 + priceVariation);
-          
-          syntheticListings.push({
-            title: `${searchQuery} Raw Card`,
-            price: price,
-            shipping: 3.99,
-            totalPrice: price + 3.99,
-            date: date.toISOString(),
-            dateSold: date.toISOString().split('T')[0],
-            url: '#',
-            imageUrl: 'https://via.placeholder.com/300?text=Image+Unavailable',
-            source: 'Synthetic'
-          });
-        }
-        
-        const processedResults = processScrapedListings(syntheticListings);
-        setSearchResults(processedResults);
-      }
+    } catch (error) {
+      console.error('Error searching eBay:', error);
+      setSearchError(error instanceof Error ? error.message : 'An error occurred while searching');
     } finally {
       setLoading(false);
     }
@@ -232,50 +165,50 @@ export function EbayCardSearch({ onAddCard }: EbayCardSearchProps) {
   };
   
   const handleAddToTrade = (item: GroupedListing) => {
-    // Get current date strings for createdAt/updatedAt
-    const currentDate = new Date().toISOString();
-    
-    // Extract card details from the title
-    const extractedPlayerName = extractPlayerName(item.title);
-    const extractedYear = extractYear(item.title);
-    const extractedCardSet = extractCardSet(item.title);
-    const extractedCardNumber = extractCardNumber(item.title);
-    const extractedVariation = extractVariation(item.title);
-    
-    // Extract condition based on the grading selection
-    let extractedCondition = 'Raw';
-    if (grading !== 'any' && grading !== 'Raw') {
-      extractedCondition = grading;
-    } else {
-      // Try to extract from title
-      const conditionFromTitle = extractGrade(item.title);
-      if (conditionFromTitle !== 'Raw') {
-        extractedCondition = conditionFromTitle;
+    try {
+      // Use the first listing as a basis for the card
+      const listing = item.listings[0];
+      
+      // Process image URL if it exists
+      let imageUrl = item.imageUrl;
+      if (imageUrl && imageUrl.includes('ebayimg.com') && !imageUrl.includes('/api/image-proxy')) {
+        // Ensure we're using the image proxy
+        imageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
       }
+      
+      // Create a card from the listing
+      const card: Card = {
+        id: `ebay-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`,
+        playerName: extractPlayerName(listing.title),
+        year: extractYear(listing.title),
+        cardSet: extractCardSet(listing.title),
+        cardNumber: extractCardNumber(listing.title),
+        variation: extractVariation(listing.title),
+        condition: extractGrade(listing.title),
+        price: item.averagePrice,
+        currentValue: item.averagePrice,
+        imageUrl: imageUrl,
+        ownerId: 'ebay',
+        tags: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        source: 'eBay'
+      };
+      
+      // Add the card to the trade
+      onAddCard(card);
+      
+      // Close the dialog
+      setOpen(false);
+      
+      // Reset the search
+      setSearchQuery('');
+      setSearchResults([]);
+      
+    } catch (error) {
+      console.error('Error adding card to trade:', error);
+      toast.error('Failed to add card to trade. Please try again.');
     }
-    
-    // Convert eBay listing to card format
-    const newCard: Card = {
-      id: `ebay-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      playerName: extractedPlayerName,
-      year: extractedYear,
-      cardSet: extractedCardSet,
-      cardNumber: extractedCardNumber,
-      variation: extractedVariation,
-      condition: extractedCondition,
-      imageUrl: item.imageUrl,
-      price: item.averagePrice,
-      currentValue: item.averagePrice,
-      source: 'eBay',
-      ownerId: '',  // Not owned yet, just for trade analysis
-      tags: [],
-      createdAt: currentDate,
-      updatedAt: currentDate
-    };
-    
-    onAddCard(newCard);
-    toast.success('Card added to trade');
-    setOpen(false);
   };
   
   // Helper functions to extract card details from title

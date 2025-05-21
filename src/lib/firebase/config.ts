@@ -22,6 +22,7 @@ console.log("Firebase config:", {
 });
 
 // API URL configuration - The /api part is handled by the server endpoints
+// Ensure it ends with no trailing slash
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 // Log API URL for debugging

@@ -72,7 +72,7 @@ The application is deployed and can be accessed at [sportscardanalyzer.com](http
    VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
    VITE_FIREBASE_APP_ID=your-app-id
    VITE_FIREBASE_MEASUREMENT_ID=your-measurement-id
-   VITE_API_URL=http://localhost:3001/api
+   VITE_API_URL=http://localhost:3001
    ```
 
    **server/.env**:

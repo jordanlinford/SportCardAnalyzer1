@@ -10,7 +10,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 
+// Import TradeContext
+import { useTradeContext } from '@/context/TradeContext';
+
 export default function TradeAnalyzerPage() {
+  // Use the TradeContext to get cards from market analyzer if any were added
+  const { cardsA: contextCardsA, cardsB: contextCardsB } = useTradeContext();
+
+  // Local state for selected cards in the trade
   const [cardsA, setCardsA] = useState<Card[]>([]);
   const [cardsB, setCardsB] = useState<Card[]>([]);
   const [tradeResult, setTradeResult] = useState<TradeResult | null>(null);
@@ -28,15 +35,34 @@ export default function TradeAnalyzerPage() {
     setSavedTrades(getSavedTrades());
   }, []);
   
+  // Load cards from context when they change
+  useEffect(() => {
+    if (contextCardsA.length > 0 && cardsA.length === 0) {
+      setCardsA(contextCardsA);
+    }
+    if (contextCardsB.length > 0 && cardsB.length === 0) {
+      setCardsB(contextCardsB);
+    }
+  }, [contextCardsA, contextCardsB, cardsA.length, cardsB.length]);
+
   // Update trade analysis whenever cards change
   useEffect(() => {
     if (cardsA.length > 0 || cardsB.length > 0) {
       setIsAnalyzing(true);
       // Add a small delay to show loading state for better UX
       const timer = setTimeout(() => {
-        const result = analyzeTrade(cardsA, cardsB);
-        setTradeResult(result);
-        setIsAnalyzing(false);
+        // Call analyzeTrade asynchronously and handle the promise
+        analyzeTrade(cardsA, cardsB)
+          .then(result => {
+            setTradeResult(result);
+          })
+          .catch(error => {
+            console.error('Error analyzing trade:', error);
+            toast.error('There was an error analyzing the trade. Please try again.');
+          })
+          .finally(() => {
+            setIsAnalyzing(false);
+          });
       }, 500);
       
       return () => clearTimeout(timer);

@@ -112,6 +112,7 @@ export function CardFilters({ filters, onFilterChange }: CardFiltersProps) {
               <select
                 id="sortOrder"
                 name="sortOrder"
+                aria-label="Sort order"
                 className="flex h-10 w-24 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
                 value={filters.sortOrder}
                 onChange={handleInputChange}

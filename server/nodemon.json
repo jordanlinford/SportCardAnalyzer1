@@ -1,0 +1,9 @@
+{
+  "watch": [
+    "*.js",
+    "routes/**/*.js"
+  ],
+  "ignore": [
+    "images/*"
+  ]
+} 
