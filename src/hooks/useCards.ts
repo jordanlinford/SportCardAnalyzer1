@@ -3,6 +3,9 @@ import { getCards, addCard, deleteCard } from "@/lib/firebase/cards";
 import { Card } from "@/types/Card";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
+import { syncCardToPublicDisplayCases } from "@/utils/displayCaseUtils";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase/config";
 
 export function useCards() {
   const { user, loading: authLoading } = useAuth();
@@ -132,6 +135,53 @@ export function useCards() {
     },
   });
 
+  const updateCardMutation = useMutation({
+    mutationFn: async (data: { cardId: string; updates: Partial<Card> }) => {
+      if (!user?.uid) {
+        console.error("useCards: No user ID available for updateCard");
+        throw new Error("You must be logged in to update a card");
+      }
+
+      console.log(`useCards: Updating card ${data.cardId} with`, data.updates);
+      
+      // First, update the card in the primary collection
+      try {
+        const cardRef = doc(db, 'users', user.uid, 'collection', data.cardId);
+        await updateDoc(cardRef, {
+          ...data.updates,
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error(`useCards: Error updating card in collection:`, error);
+        // Try the alternate path as fallback
+        try {
+          const altCardRef = doc(db, 'users', user.uid, 'cards', data.cardId);
+          await updateDoc(altCardRef, {
+            ...data.updates,
+            updatedAt: new Date().toISOString(),
+          });
+        } catch (altError) {
+          console.error(`useCards: Error updating card in cards:`, altError);
+          throw altError;
+        }
+      }
+      
+      // Now, sync the changes to public display cases
+      try {
+        await syncCardToPublicDisplayCases(data.cardId, user.uid);
+      } catch (syncError) {
+        console.error("useCards: Error syncing card to public display cases:", syncError);
+        // Don't fail the update if sync fails
+      }
+    },
+    onSuccess: () => {
+      // Existing success handlers
+      queryClient.invalidateQueries({ queryKey: ["cards", user?.uid] });
+      // Also invalidate public display cases queries to ensure they refresh
+      queryClient.invalidateQueries({ queryKey: ["publicDisplayCases"] });
+    },
+  });
+
   const retryFetchCards = () => {
     if (error) {
       toast.info("Retrying to load your cards...");
@@ -145,6 +195,7 @@ export function useCards() {
     error,
     addCard: addCardMutation.mutate,
     deleteCard: deleteCardMutation.mutate,
+    updateCard: updateCardMutation.mutate,
     retryFetchCards
   };
 } 

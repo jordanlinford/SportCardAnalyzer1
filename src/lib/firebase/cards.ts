@@ -329,7 +329,7 @@ export async function deleteCard(cardId: string, userId: string): Promise<void> 
     try {
       console.log("deleteCard: Checking display cases for card references");
       
-      // Get all user's display cases
+      // First check display_cases collection (newer path)
       const displayCaseRef = collection(db, "users", userId, "display_cases");
       const displayCasesSnapshot = await getDocs(displayCaseRef);
       
@@ -363,6 +363,7 @@ export async function deleteCard(cardId: string, userId: string): Promise<void> 
           // Also update public version if it exists and is public
           if (displayCase.isPublic) {
             try {
+              // Try updating in public_display_cases collection
               const publicRef = doc(db, "public_display_cases", dcDoc.id);
               const publicSnap = await getDoc(publicRef);
               
@@ -378,6 +379,55 @@ export async function deleteCard(cardId: string, userId: string): Promise<void> 
             }
           }
         }
+      }
+      
+      // Also check the legacy displayCases collection
+      try {
+        const legacyQuery = query(
+          collection(db, "displayCases"),
+          where("userId", "==", userId)
+        );
+        const legacySnapshot = await getDocs(legacyQuery);
+        
+        // Process legacy display cases
+        for (const dcDoc of legacySnapshot.docs) {
+          const displayCase = dcDoc.data();
+          
+          if (!displayCase.cardIds || !Array.isArray(displayCase.cardIds)) {
+            continue;
+          }
+          
+          if (displayCase.cardIds.includes(cardId)) {
+            console.log(`deleteCard: Removing card from legacy display case: ${dcDoc.id}`);
+            
+            const updatedCardIds = displayCase.cardIds.filter(id => id !== cardId);
+            
+            await updateDoc(doc(db, "displayCases", dcDoc.id), {
+              cardIds: updatedCardIds,
+              updatedAt: new Date()
+            });
+            
+            displayCasesUpdated++;
+            
+            // Also check for public reference
+            try {
+              const publicRef = doc(db, "public_display_cases", dcDoc.id);
+              const publicSnap = await getDoc(publicRef);
+              
+              if (publicSnap.exists()) {
+                await updateDoc(publicRef, {
+                  cardIds: updatedCardIds,
+                  updatedAt: new Date()
+                });
+                console.log(`deleteCard: Updated public display case from legacy reference ${dcDoc.id}`);
+              }
+            } catch (err) {
+              console.error(`deleteCard: Error updating public display case from legacy:`, err);
+            }
+          }
+        }
+      } catch (legacyError) {
+        console.error("deleteCard: Error checking legacy displayCases:", legacyError);
       }
       
       if (displayCasesUpdated > 0) {

@@ -335,4 +335,88 @@ export async function updateLikesCount(displayCaseId: string) {
     console.error(`Error updating likes count for display case ${displayCaseId}:`, error);
     return false;
   }
+}
+
+/**
+ * Syncs updated card data to public display cases
+ * Call this when a card is updated to ensure public display cases show the latest data
+ */
+export async function syncCardToPublicDisplayCases(cardId: string, userId: string): Promise<boolean> {
+  if (!cardId || !userId) {
+    console.error("syncCardToPublicDisplayCases: Missing cardId or userId");
+    return false;
+  }
+  
+  try {
+    console.log(`syncCardToPublicDisplayCases: Syncing card ${cardId} for user ${userId}`);
+    
+    // First, get all display cases containing this card
+    const userDisplayCasesRef = collection(db, "users", userId, "display_cases");
+    const userDisplayCasesSnapshot = await getDocs(userDisplayCasesRef);
+    
+    let updatedCases = 0;
+    
+    // Check each display case
+    for (const dcDoc of userDisplayCasesSnapshot.docs) {
+      const displayCase = dcDoc.data();
+      
+      // Skip if display case is not public or has no cardIds
+      if (!displayCase.isPublic || !displayCase.cardIds || !Array.isArray(displayCase.cardIds)) {
+        continue;
+      }
+      
+      // Check if this display case contains the card
+      if (displayCase.cardIds.includes(cardId)) {
+        // Check if there's a public version
+        const publicRef = doc(db, "public_display_cases", dcDoc.id);
+        const publicSnapshot = await getDoc(publicRef);
+        
+        if (publicSnapshot.exists()) {
+          // Update the timestamp to force a refresh when users view the public display case
+          await updateDoc(publicRef, {
+            updatedAt: new Date()
+          });
+          
+          updatedCases++;
+          console.log(`syncCardToPublicDisplayCases: Updated public display case ${dcDoc.id}`);
+        }
+      }
+    }
+    
+    // Also check legacy display cases
+    try {
+      const legacyQuery = query(
+        collection(db, "displayCases"),
+        where("userId", "==", userId),
+        where("isPublic", "==", true)
+      );
+      const legacySnapshot = await getDocs(legacyQuery);
+      
+      for (const dcDoc of legacySnapshot.docs) {
+        const displayCase = dcDoc.data();
+        
+        if (displayCase.cardIds && Array.isArray(displayCase.cardIds) && displayCase.cardIds.includes(cardId)) {
+          const publicRef = doc(db, "public_display_cases", dcDoc.id);
+          const publicSnapshot = await getDoc(publicRef);
+          
+          if (publicSnapshot.exists()) {
+            await updateDoc(publicRef, {
+              updatedAt: new Date()
+            });
+            
+            updatedCases++;
+            console.log(`syncCardToPublicDisplayCases: Updated legacy public display case ${dcDoc.id}`);
+          }
+        }
+      }
+    } catch (legacyError) {
+      console.error("syncCardToPublicDisplayCases: Error checking legacy displayCases:", legacyError);
+    }
+    
+    console.log(`syncCardToPublicDisplayCases: Updated ${updatedCases} public display cases`);
+    return updatedCases > 0;
+  } catch (error) {
+    console.error("syncCardToPublicDisplayCases: Error syncing card:", error);
+    return false;
+  }
 } 
