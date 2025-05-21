@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image Loading Test Page</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+    h1, h2 { color: #333; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
+    .success { color: green; }
+    .error { color: red; }
+    .test-area { margin-top: 20px; border-top: 1px solid #eee; padding-top: 20px; }
+    .test-image { max-width: 200px; height: 250px; border: 2px solid #ddd; margin: 10px; object-fit: contain; }
+    .image-row { display: flex; flex-wrap: wrap; }
+    .image-container { display: flex; flex-direction: column; align-items: center; }
+    .image-label { font-size: 12px; margin-top: 5px; text-align: center; max-width: 200px; }
+  </style>
+</head>
+<body>
+  <h1>Sports Card Image Test Page</h1>
+  
+  <div class="card">
+    <h2>Direct Image Loading Tests</h2>
+    <p>These images load directly from eBay without proxying</p>
+    
+    <div class="image-row">
+      <div class="image-container">
+        <img class="test-image" src="https://i.ebayimg.com/images/g/mVwAAOSwsjVkTBkq/s-l1600.jpg" alt="Jefferson PSA 10">
+        <div class="image-label">Direct Jefferson PSA 10</div>
+      </div>
+      
+      <div class="image-container">
+        <img class="test-image" src="https://i.ebayimg.com/images/g/YkIAAOSwK3VkoBj3/s-l1600.jpg" alt="Jefferson PSA 9">
+        <div class="image-label">Direct Jefferson PSA 9</div>
+      </div>
+      
+      <div class="image-container">
+        <img class="test-image" src="https://i.ebayimg.com/images/g/EkoAAOSwasFll1PQ/s-l1600.jpg" alt="Jefferson Raw">
+        <div class="image-label">Direct Jefferson Raw</div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="card">
+    <h2>Proxied Image Loading Tests</h2>
+    <p>These images go through the server proxy</p>
+    
+    <div class="image-row">
+      <div class="image-container">
+        <img class="test-image" src="/api/image-proxy?url=https%3A%2F%2Fi.ebayimg.com%2Fimages%2Fg%2FmVwAAOSwsjVkTBkq%2Fs-l1600.jpg" alt="Proxied Jefferson PSA 10">
+        <div class="image-label">Proxied Jefferson PSA 10</div>
+      </div>
+      
+      <div class="image-container">
+        <img class="test-image" src="/api/image-proxy?url=https%3A%2F%2Fi.ebayimg.com%2Fimages%2Fg%2FYkIAAOSwK3VkoBj3%2Fs-l1600.jpg" alt="Proxied Jefferson PSA 9">
+        <div class="image-label">Proxied Jefferson PSA 9</div>
+      </div>
+      
+      <div class="image-container">
+        <img class="test-image" src="/api/image-proxy?url=https%3A%2F%2Fi.ebayimg.com%2Fimages%2Fg%2FEkoAAOSwasFll1PQ%2Fs-l1600.jpg" alt="Proxied Jefferson Raw">
+        <div class="image-label">Proxied Jefferson Raw</div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="card">
+    <h2>Fallback Images</h2>
+    <p>These images are used as fallbacks</p>
+    
+    <div class="image-row">
+      <div class="image-container">
+        <img class="test-image" src="https://placehold.co/400x600/f4f4f7/222222?text=Card+Image" alt="Placeholder">
+        <div class="image-label">Placeholder Image</div>
+      </div>
+      
+      <div class="image-container">
+        <img class="test-image" src="data:image/svg+xml,%3Csvg width='400' height='600' viewBox='0 0 400 600' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='400' height='600' fill='%23f8f9fa'/%3E%3Ctext x='50%25' y='50%25' font-family='Arial' font-size='24' fill='%23212529' text-anchor='middle'%3EJustin Jefferson%3C/text%3E%3Ctext x='50%25' y='57%25' font-family='Arial' font-size='20' fill='%23dc3545' text-anchor='middle'%3EPSA 10%3C/text%3E%3C/svg%3E" alt="SVG Fallback">
+        <div class="image-label">SVG Fallback</div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="test-area">
+    <h2>Current Status</h2>
+    <div id="status">Loading status...</div>
+    
+    <script>
+      // Basic test to check if proxy is running
+      fetch('/api/health')
+        .then(response => {
+          if (response.ok) return response.json();
+          throw new Error('Health check failed');
+        })
+        .then(data => {
+          document.getElementById('status').innerHTML = '<p class="success">✅ Server is running correctly</p>';
+        })
+        .catch(err => {
+          document.getElementById('status').innerHTML = `<p class="error">❌ Server error: ${err.message}</p>`;
+        });
+    </script>
+  </div>
+</body>
+</html> 

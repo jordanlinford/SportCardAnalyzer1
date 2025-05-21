@@ -68,6 +68,10 @@ export function TradeCardGrid({ cards, title, emptyMessage = "No cards selected"
                       src={card.imageUrl} 
                       alt={card.playerName}
                       className="w-full h-full object-cover"
+                      onError={(e) => {
+                        // Fallback for broken images
+                        (e.target as HTMLImageElement).src = 'https://via.placeholder.com/200x300?text=No+Image';
+                      }}
                     />
                     <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-2">
                       <div className="text-white text-sm font-medium">${calculateCardMarketValue(card).toFixed(2)}</div>
@@ -111,39 +115,42 @@ export function TradeCardGrid({ cards, title, emptyMessage = "No cards selected"
                   <div className="text-lg font-semibold">${calculateCardMarketValue(card).toFixed(2)}</div>
                 </div>
                 
-                <div className="h-32 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart
-                      data={generatePriceData(card)}
-                      margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
-                    >
-                      <XAxis 
-                        dataKey="month" 
-                        tickFormatter={(month) => `${month}m`}
-                        tick={{ fontSize: 10 }}
-                      />
-                      <YAxis 
-                        domain={['dataMin - 5', 'dataMax + 5']}
-                        tickFormatter={(value) => `$${value.toFixed(0)}`}
-                        tick={{ fontSize: 10 }}
-                      />
-                      <Tooltip 
-                        formatter={(value: any) => [`$${Number(value).toFixed(2)}`, 'Price']}
-                        labelFormatter={(month) => `${month} months ago`}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="price" 
-                        stroke="#3b82f6" 
-                        dot={false}
-                        strokeWidth={2}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-                
-                <div className="mt-2 text-xs text-gray-500">
-                  Historical pricing trend (estimated)
+                <div>
+                  <div className="text-sm text-gray-500 mb-1">Price History (12 Months)</div>
+                  <div className="h-32">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart
+                        data={generatePriceData(card)}
+                        margin={{
+                          top: 5,
+                          right: 5,
+                          left: 0,
+                          bottom: 5,
+                        }}
+                      >
+                        <XAxis 
+                          dataKey="month" 
+                          tickFormatter={(value) => value === 0 ? 'Now' : `${value}m`}
+                          tick={{ fontSize: 10 }}
+                        />
+                        <YAxis 
+                          tickFormatter={(value) => `$${value.toFixed(0)}`}
+                          tick={{ fontSize: 10 }}
+                          width={30}
+                        />
+                        <Tooltip 
+                          formatter={(value) => [`$${Number(value).toFixed(2)}`, 'Price']}
+                          labelFormatter={(value) => value === 0 ? 'Now' : `${value} months ago`}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="price"
+                          stroke="#8884d8"
+                          dot={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
               </div>
             </PopoverContent>

@@ -9,6 +9,10 @@ import multer from 'multer';
 import NodeCache from 'node-cache';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import { fetchEbayImages } from './ebayImageScraper.js';
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
+import axios from 'axios';
 
 puppeteer.use(StealthPlugin());
 const app = express();
@@ -18,6 +22,34 @@ const cache = new NodeCache({ stdTTL: 600, checkperiod: 120 }); // 10min caching
 const tmpUpload = multer({ dest: 'uploads/' });
 
 app.use(express.json());
+
+// ---------------------------------------------------------------------------
+// Local image cache directory – we download each listing's main image once
+//  and then serve it from /images/<itemId>.jpg so the front-end never has to
+//  talk to eBay. This bypasses hot-link blocking and guarantees availability.
+// ---------------------------------------------------------------------------
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const IMAGES_DIR = path.join(__dirname, 'images');
+if (!fs.existsSync(IMAGES_DIR)) {
+  fs.mkdirSync(IMAGES_DIR, { recursive: true });
+  console.log('[ebayScraper] Created local image cache dir', IMAGES_DIR);
+}
+
+// Helper: download + save a remote image if we don't already have a cached copy
+async function cacheImage(localPath, remoteUrl) {
+  if (fs.existsSync(localPath)) return true; // already cached
+  try {
+    const resp = await axios.get(remoteUrl, { responseType: 'arraybuffer', timeout: 15000, headers: {
+      'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0 Safari/537.36',
+      'Accept':'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'
+    }});
+    fs.writeFileSync(localPath, resp.data);
+    return true;
+  } catch(err) {
+    console.warn('cacheImage: failed', remoteUrl.substring(0,120), err.message);
+    return false;
+  }
+}
 
 // Utility: normalize title by removing grade and special chars
 function normalizeTitle(title) {
@@ -65,7 +97,24 @@ async function fetchOgImage(browser, itemUrl) {
   const p = await browser.newPage();
   try {
     await p.goto(itemUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-    og = await p.$eval('meta[property="og:image"]', el => el.getAttribute('content'));
+    // Try og:image first (fastest, if present)
+    og = await p.$eval('meta[property="og:image"]', el => el.getAttribute('content')).catch(() => '');
+
+    // ------------------------------------------------------------------
+    // Fallback: many modern eBay pages omit the og:image tag or replace it
+    // with a 1×1 placeholder.  In those cases, the main listing photo is
+    // still available in the <img id="icImg"> element once the DOM has
+    // loaded.  Grabbing its src gives us a full-size JPEG that we can cache.
+    // ------------------------------------------------------------------
+    if (!og) {
+      try {
+        // Wait briefly for the hero image to render; bail quickly on timeout
+        await p.waitForSelector('#icImg', { timeout: 8000 });
+        og = await p.$eval('#icImg', el => el.getAttribute('src'));
+      } catch (_) {
+        /* ignore – image may not be present */
+      }
+    }
   } catch (_) {
     /* ignore */
   } finally {
@@ -252,15 +301,77 @@ async function scrapeEbay(query, limit = 120) {
     return true;
   });
 
-  console.log(`  ↳ Returning ${items.length} total listings`);
+  console.log(`  ↳ Enriching ${items.length} listings with full-size images…`);
+
+  // Launch a lightweight headless browser for image enrichment
+  const browser = await puppeteer.launch({ headless: "new", args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  try {
+    await ensureImages(items, browser);
+  } catch (err) {
+    console.warn('scrapeEbay: ensureImages failed', err.message);
+  } finally {
+    await browser.close();
+  }
+
+  console.log(`  ↳ Returning ${items.length} enriched listings`);
   return items.slice(0, limit);
 }
 
 // Patch missing images by visiting listing pages (slow-path only for blanks)
 async function ensureImages(items, browser) {
   for (const itm of items) {
-    if (!itm.imageUrl || /trans_1x1|gif$/i.test(itm.imageUrl)) {
-      itm.imageUrl = await fetchOgImage(browser, itm.itemHref);
+    try {
+      // Always attempt to enrich with fetchEbayImages so we capture variationImages too
+      const { mainImage, variations } = await fetchEbayImages(itm.itemHref);
+
+      // --------------------------------------------------------------------
+      // NEW: cache the main image locally and rewrite imageUrl to /images/ID
+      // --------------------------------------------------------------------
+      if (mainImage && itm.itemId) {
+        const localFile = path.join(IMAGES_DIR, `${itm.itemId}.jpg`);
+        const ok = await cacheImage(localFile, mainImage);
+        if (ok) {
+          itm.imageUrl = `/images/${itm.itemId}.jpg`;
+        }
+      }
+
+      // Fallback – still use proxy for variation images when needed
+      if (Array.isArray(variations) && variations.length) {
+        itm.variationImages = variations.map((v, idx) => {
+          if (!itm.itemId) return v;
+          const localVarFile = path.join(IMAGES_DIR, `${itm.itemId}_var${idx}.jpg`);
+          cacheImage(localVarFile, v).then();
+          return `/images/${itm.itemId}_var${idx}.jpg`;
+        });
+      }
+
+      // Additional fallback if still no image
+      if (!itm.imageUrl) {
+        const og = await fetchOgImage(browser, itm.itemHref);
+        if (og && itm.itemId) {
+          const localFile = path.join(IMAGES_DIR, `${itm.itemId}.jpg`);
+          const ok = await cacheImage(localFile, og);
+          if (ok) itm.imageUrl = `/images/${itm.itemId}.jpg`;
+        }
+      }
+
+      // ------------------------------------------------------------------
+      // FINAL safety net: if we STILL don't have a cached copy but the
+      // scraper did capture a thumbnail src on the search results page
+      // (usually something like https://i.ebayimg.com/images/g/…/s-l140.jpg),
+      // grab that small JPEG. It's not high-res but at least it shows a
+      // picture instead of the grey placeholder.
+      // ------------------------------------------------------------------
+      if (itm.imageUrl && itm.imageUrl.startsWith('http') && itm.itemId && !itm.imageUrl.startsWith('/images/')) {
+        // Don't waste time on obvious placeholders
+        if (!/placehold|trans_1x1|gray\.gif/i.test(itm.imageUrl)) {
+          const thumbFile = path.join(IMAGES_DIR, `${itm.itemId}_thumb.jpg`);
+          const ok2 = await cacheImage(thumbFile, itm.imageUrl);
+          if (ok2) itm.imageUrl = `/images/${itm.itemId}_thumb.jpg`;
+        }
+      }
+    } catch (err) {
+      console.warn('ensureImages: failed to enrich', itm.itemHref, err.message);
     }
   }
   return items;

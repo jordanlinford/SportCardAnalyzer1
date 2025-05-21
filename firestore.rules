@@ -14,37 +14,26 @@ service cloud.firestore {
 
     // Rules for user collections
     match /users/{userId} {
-      allow read: if isAuthenticated();  // Allow authenticated users to read
-      allow write: if isOwner(userId);
+      allow read, write: if isOwner(userId);
       
       // Rules for user's collection subcollection
       match /collection/{document=**} {
-        allow read: if isAuthenticated();  // Allow authenticated users to read
-        allow write: if isOwner(userId);
+        allow read, write: if isOwner(userId);
       }
       
       // Rules for user's cards subcollection (legacy path)
       match /cards/{document=**} {
-        allow read: if isAuthenticated();  // Allow authenticated users to read
-        allow write: if isOwner(userId);
+        allow read, write: if isOwner(userId);
       }
       
       // Rules for user's saved searches subcollection
       match /saved_searches/{document=**} {
-        allow read: if isAuthenticated();  // Allow authenticated users to read
-        allow write: if isOwner(userId);
+        allow read, write: if isOwner(userId);
       }
       
       // Rules for user's display cases
       match /display_cases/{displayCaseId} {
-        allow read: if isAuthenticated();  // Allow authenticated users to read
-        allow write: if isOwner(userId);
-      }
-
-      // Rules for market analyzer data
-      match /market_analyzer/{document=**} {
-        allow read: if isAuthenticated();  // Allow authenticated users to read
-        allow write: if isOwner(userId);
+        allow read, write: if isOwner(userId);
       }
     }
 
@@ -113,12 +102,6 @@ service cloud.firestore {
       allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       // No update or delete - these are permanent records for rate limiting
-    }
-
-    // Rules for market analyzer data
-    match /market_analyzer/{document=**} {
-      allow read: if isAuthenticated();  // Allow authenticated users to read
-      allow write: if isAuthenticated();  // Allow authenticated users to write
     }
   }
 } 

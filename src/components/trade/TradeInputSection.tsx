@@ -3,8 +3,8 @@ import { Card } from "@/types/Card";
 import { Button } from "@/components/ui/button";
 import { useCards } from '@/hooks/useCards';
 import { calculateCardMarketValue } from '@/lib/trade/TradeAnalyzer';
-import { X } from 'lucide-react';
-import { EbayCardSearch } from './EbayCardSearch';
+import { X, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 interface Props {
   side: "A" | "B";
@@ -27,11 +27,6 @@ export function TradeInputSection({ side, label, selectedCards, onUpdate }: Prop
     // Don't add duplicate cards
     if (selectedCards.some(c => c.id === card.id)) return;
     
-    onUpdate([...selectedCards, card]);
-  };
-
-  // Handle adding a card from eBay
-  const handleAddEbayCard = (card: Card) => {
     onUpdate([...selectedCards, card]);
   };
   
@@ -165,7 +160,16 @@ export function TradeInputSection({ side, label, selectedCards, onUpdate }: Prop
               Add Cards from Collection
             </Button>
             
-            <EbayCardSearch onAddCard={handleAddEbayCard} />
+            <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+              <h3 className="text-sm font-medium text-blue-800 mb-1">Need to find a card that's not in your collection?</h3>
+              <p className="text-xs text-blue-700 mb-2">Use the Market Analyzer to evaluate cards and add them directly to this trade.</p>
+              <Link to="/market-analyzer">
+                <Button variant="outline" size="sm" className="w-full bg-white">
+                  <span>Go to Market Analyzer</span>
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
+              </Link>
+            </div>
           </>
         )}
       </div>

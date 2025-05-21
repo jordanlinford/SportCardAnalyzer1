@@ -1,4 +1,5 @@
-import { Card } from "@/types/Card";
+import { Card } from '../types/Card';
+import { updateCardValue } from './TradeEbayService';
 
 export interface TradeResult {
   valueSideA: number;
@@ -25,10 +26,16 @@ export interface SavedTrade {
 /**
  * Analyzes a trade between two sets of cards and provides a recommendation
  */
-export function analyzeTrade(sideA: Card[], sideB: Card[]): TradeResult {
+export async function analyzeTrade(sideA: Card[], sideB: Card[]): Promise<TradeResult> {
+  // Update market values for all cards
+  const [updatedSideA, updatedSideB] = await Promise.all([
+    Promise.all(sideA.map(updateCardValue)),
+    Promise.all(sideB.map(updateCardValue))
+  ]);
+  
   // Calculate total current value for each side
-  const valueSideA = sideA.reduce((sum, card) => sum + (card.currentValue || 0), 0);
-  const valueSideB = sideB.reduce((sum, card) => sum + (card.currentValue || 0), 0);
+  const valueSideA = updatedSideA.reduce((sum, card) => sum + (card.currentValue || 0), 0);
+  const valueSideB = updatedSideB.reduce((sum, card) => sum + (card.currentValue || 0), 0);
   
   // Calculate absolute and percentage differences
   const difference = valueSideA - valueSideB;
@@ -50,12 +57,12 @@ export function analyzeTrade(sideA: Card[], sideB: Card[]): TradeResult {
   }
   
   // Calculate risk level based on volatility of cards
-  const riskLevel = calculateRiskLevel(sideA, sideB);
+  const riskLevel = calculateRiskLevel(updatedSideA, updatedSideB);
   
   // Calculate potential growth based on recent trends
   const potentialGrowth = {
-    sideA: calculatePotentialGrowth(sideA),
-    sideB: calculatePotentialGrowth(sideB)
+    sideA: calculatePotentialGrowth(updatedSideA),
+    sideB: calculatePotentialGrowth(updatedSideB)
   };
 
   return { 
@@ -190,4 +197,15 @@ export function deleteSavedTrade(tradeId: string): boolean {
  */
 function generateTradeId(): string {
   return `trade-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+}
+
+function isGraded(condition: string): boolean {
+  if (!condition) return false;
+  const normalized = condition.toUpperCase();
+  return (
+    normalized.includes("PSA") ||
+    normalized.includes("BGS") ||
+    normalized.includes("SGC") ||
+    normalized.includes("CGC")
+  );
 } 

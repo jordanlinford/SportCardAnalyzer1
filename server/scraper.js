@@ -255,9 +255,23 @@ async function scrapeEbayListings(url) {
         // Fix for image URLs - try multiple selectors and sources
         let imageUrl = $(el).find('.s-item__image-img').attr('src');
         
-        // Sometimes the image is in the data-src attribute
-        if (!imageUrl || imageUrl.includes('s-l140.jpg') || imageUrl.includes('s-l96.jpg')) {
+        // eBay now lazy-loads real pics in data-imgsrc
+        if (!imageUrl || imageUrl.includes('s-l140') || imageUrl.includes('s-l96')) {
+          imageUrl = $(el).find('.s-item__image-img').attr('data-imgsrc');
+        }
+        
+        // Fallback to data-src (older lazy-load attribute)
+        if (!imageUrl) {
           imageUrl = $(el).find('.s-item__image-img').attr('data-src');
+        }
+        
+        // Final fallback – pick largest entry from srcset
+        if (!imageUrl) {
+          const srcset = $(el).find('.s-item__image-img').attr('srcset');
+          if (srcset) {
+            const biggest = srcset.split(',').pop()?.trim().split(' ')[0];
+            if (biggest && biggest.startsWith('http')) imageUrl = biggest;
+          }
         }
         
         // Try to get a larger version of the image
