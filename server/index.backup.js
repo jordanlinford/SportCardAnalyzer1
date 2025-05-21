@@ -1,3 +1,6 @@
+// This file has been renamed to index.backup.js to prevent Vercel from bundling it.
+// Restore if needed.
+
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));

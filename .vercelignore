@@ -335,4 +335,6 @@ server/test-image-99.js
 server/test-image-99.css
 server/test-image-100.html
 server/test-image-100.js
-server/test-image-100.css 
+server/test-image-100.css
+server/index.js
+*.log 
