@@ -1,14 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { db } from '@/lib/firebase/config';
 import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { DisplayCase } from '@/lib/firebase/displayCases';
 import { Card } from '@/types/Card';
+
+const CACHE_TIMEOUT_MS = 60000; // 1 minute cache timeout
 
 export function useDisplayCase(id: string | undefined) {
   console.log("useDisplayCase hook called with ID:", id);
   const [displayCase, setDisplayCase] = useState<DisplayCase | null>(null);
   const [cards, setCards] = useState<Card[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [lastFetchTime, setLastFetchTime] = useState<number>(0);
 
   useEffect(() => {
     console.log("useDisplayCase useEffect triggered with ID:", id);
@@ -19,6 +22,16 @@ export function useDisplayCase(id: string | undefined) {
         setIsLoading(false);
         return;
       }
+
+      // Check if we need to refetch (either first fetch or cache expired)
+      const now = Date.now();
+      if (lastFetchTime > 0 && now - lastFetchTime < CACHE_TIMEOUT_MS) {
+        console.log("useDisplayCase: Using cached data, skipping fetch");
+        return;
+      }
+      
+      setIsLoading(true);
+      setLastFetchTime(now);
 
       try {
         console.log("useDisplayCase: Starting fetch for display case with ID:", id);
@@ -89,6 +102,7 @@ export function useDisplayCase(id: string | undefined) {
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
           likes: data.likes || 0,
+          visits: data.visits || 0,
           comments: (data.comments || []).map((comment: any) => ({
             ...comment,
             timestamp: comment.timestamp?.toDate() || new Date()
@@ -136,27 +150,47 @@ export function useDisplayCase(id: string | undefined) {
                   return;
                 }
                 
-                // If card not in main collection, try user's collection
+                // If card not in main collection and we have a userId, try user's collection
                 if (data.userId) {
-                  console.log(`useDisplayCase: Card not found in main collection, trying user collection for user ${data.userId}`);
-                  const userCardDoc = await getDoc(doc(db, 'users', data.userId, 'collection', cardId));
-                  if (userCardDoc.exists()) {
-                    const cardData = userCardDoc.data();
+                  // First try the newer collection path (preferred)
+                  const collectionRef = doc(db, 'users', data.userId, 'collection', cardId);
+                  const collectionSnapshot = await getDoc(collectionRef);
+                  
+                  if (collectionSnapshot.exists()) {
+                    const cardData = collectionSnapshot.data();
                     cardsData.push({
-                      id: userCardDoc.id,
+                      id: collectionSnapshot.id,
                       ...cardData,
                       playerName: cardData.playerName || "Unknown Player",
                       year: cardData.year || "",
                       cardSet: cardData.cardSet || "",
                       imageUrl: cardData.imageUrl || ""
                     } as Card);
-                    console.log(`useDisplayCase: Found card in user collection: ${userCardDoc.id}`);
+                    console.log(`useDisplayCase: Found card in user collection path: ${cardId}`);
+                    return;
+                  }
+                  
+                  // Then try the older cards path
+                  const cardsRef = doc(db, 'users', data.userId, 'cards', cardId);
+                  const cardsSnapshot = await getDoc(cardsRef);
+                  
+                  if (cardsSnapshot.exists()) {
+                    const cardData = cardsSnapshot.data();
+                    cardsData.push({
+                      id: cardsSnapshot.id,
+                      ...cardData,
+                      playerName: cardData.playerName || "Unknown Player",
+                      year: cardData.year || "",
+                      cardSet: cardData.cardSet || "",
+                      imageUrl: cardData.imageUrl || ""
+                    } as Card);
+                    console.log(`useDisplayCase: Found card in user cards path: ${cardId}`);
                     return;
                   }
                 }
                 
                 console.log(`useDisplayCase: Card not found: ${cardId}`);
-                console.warn(`useDisplayCase: Tried following paths for card:\n- cards/${cardId}\n${data.userId ? `- users/${data.userId}/collection/${cardId}` : '- No user collection path (userId missing)'}`);
+                console.warn(`useDisplayCase: Tried following paths for card:\n- cards/${cardId}\n${data.userId ? `- users/${data.userId}/collection/${cardId}\n- users/${data.userId}/cards/${cardId}` : '- No user collection path (userId missing)'}`);
               } catch (err) {
                 console.error(`useDisplayCase: Error fetching card ${cardId}:`, err);
               }
@@ -190,7 +224,12 @@ export function useDisplayCase(id: string | undefined) {
     return () => {
       console.log("useDisplayCase cleanup for ID:", id);
     };
-  }, [id]);
+  }, [id, lastFetchTime]);
 
-  return { displayCase, cards, isLoading };
+  // Add a manual refresh function
+  const refreshDisplayCase = useCallback(() => {
+    setLastFetchTime(0); // Force a refresh by resetting the cache time
+  }, []);
+
+  return { displayCase, cards, isLoading, refreshDisplayCase };
 } 
