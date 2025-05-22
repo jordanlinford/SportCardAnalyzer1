@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import logging
 import traceback
 
@@ -26,7 +27,7 @@ app.add_middleware(
     allow_origins=["https://sportscardanalyzer.com"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["X-Requested-With", "Content-Type", "Accept", "Authorization", "Origin"],
+    allow_headers=["*"],
     expose_headers=["*"],
     max_age=86400
 )
@@ -38,9 +39,18 @@ logger.debug("Router included successfully")
 
 # Handle OPTIONS requests explicitly
 @app.options("/{full_path:path}")
-async def options_route(full_path: str):
+async def options_route(request: Request, full_path: str):
     logger.debug(f"OPTIONS request received for path: {full_path}")
-    return {}
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": "https://sportscardanalyzer.com",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "86400",
+            "Access-Control-Allow-Credentials": "true"
+        }
+    )
 
 @app.get("/")
 async def root():
