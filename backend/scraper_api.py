@@ -20,19 +20,27 @@ except Exception as e:
 
 app = FastAPI(title="Sports Card Market Analysis API")
 
-# Enable CORS
+# Enable CORS - specific to your domain
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://sportscardanalyzer.com"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["X-Requested-With", "Content-Type", "Accept", "Authorization", "Origin"],
+    expose_headers=["*"],
+    max_age=86400
 )
 
 # Register routes
 logger.debug("Including routers...")
 app.include_router(card_router)
 logger.debug("Router included successfully")
+
+# Handle OPTIONS requests explicitly
+@app.options("/{full_path:path}")
+async def options_route(full_path: str):
+    logger.debug(f"OPTIONS request received for path: {full_path}")
+    return {}
 
 @app.get("/")
 async def root():

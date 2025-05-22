@@ -8,13 +8,30 @@
   ],
   "routes": [
     {
-      "src": "/(.*)",
-      "dest": "scraper_api.py"
+      "src": "/api/(.*)",
+      "methods": ["OPTIONS"],
+      "dest": "/scraper_api.py",
+      "headers": {
+        "Access-Control-Allow-Origin": "https://sportscardanalyzer.com",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "X-Requested-With, Content-Type, Accept, Authorization, Origin",
+        "Access-Control-Max-Age": "86400"
+      }
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "/scraper_api.py",
+      "headers": {
+        "Access-Control-Allow-Origin": "https://sportscardanalyzer.com",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "X-Requested-With, Content-Type, Accept, Authorization, Origin"
+      }
     }
   ],
   "env": {
     "PYTHONPATH": ".",
     "API_ENV": "production"
   },
+  "public": true,
   "regions": ["iad1"]
 } 
