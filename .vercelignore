@@ -8,6 +8,15 @@ node_modules
 .env.test
 .env.production
 
+# Python virtual environments
+.venv/
+venv/
+ENV/
+backend/venv/
+**/__pycache__/
+**/*.so
+**/.dylibs/
+
 # Build files
 dist
 build
