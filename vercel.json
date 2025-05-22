@@ -19,5 +19,6 @@
       "src": "/api/(.*)",
       "dest": "/server/api/$1"
     }
-  ]
+  ],
+  "public": true
 } 
