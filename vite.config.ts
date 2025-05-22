@@ -26,4 +26,5 @@ export default defineConfig({
     minify: true,
   },
   assetsInclude: ['**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.gif', '**/*.svg'],
+  base: './' // This makes paths relative, which works better for GitHub Pages
 })

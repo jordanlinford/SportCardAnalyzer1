@@ -9,7 +9,7 @@
     "dev": "nodemon server/server.js",
     "dev:client": "vite --port 5135 --strictPort",
     "dev:server": "nodemon server/server.js",
-    "build": "vite build",
+    "build": "vite build && node scripts/generate-env.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
@@ -20,6 +20,7 @@
     "@radix-ui/react-label": "^2.1.7",
     "@radix-ui/react-popover": "^1.1.14",
     "@radix-ui/react-tabs": "^1.1.12",
+    "@tanstack/react-query": "^5.76.1",
     "@types/uuid": "^10.0.0",
     "apexcharts": "^4.7.0",
     "axios": "^1.6.7",
@@ -44,6 +45,8 @@
     "zod": "^3.25.20"
   },
   "devDependencies": {
+    "@types/react": "^19.1.5",
+    "@types/react-dom": "^19.1.5",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.17",
     "nodemon": "^3.0.3",

@@ -9,15 +9,27 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="format-detection" content="telephone=no" />
     <title>Sports Card Analyzer</title>
-    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png" />
-    <link rel="icon" href="/favicon.ico" />
-    <link rel="manifest" href="/manifest.json" crossorigin="use-credentials" />
-    <script type="module" crossorigin src="/assets/index-C2n62l_0.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/js/vendor-D935a05c.js">
-    <link rel="modulepreload" crossorigin href="/assets/js/firebase-DyJ0Md-c.js">
-    <link rel="stylesheet" crossorigin href="/assets/css/index-UzXUPQ5k.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="./images/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./images/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="./images/favicon-16x16.png" />
+    <link rel="icon" href="./favicon.ico" />
+    <link rel="manifest" href="./manifest.json" crossorigin="use-credentials" />
+    <!-- Load environment variables -->
+    <script src="./env.js"></script>
+    <!-- Firebase Config Fallback -->
+    <script>
+      window.firebaseConfig = {
+        apiKey: "AIzaSyAfb2YtBxD5YEWrNpG0J3GN_g0ZfPzsoOE",
+        authDomain: "sports-card-analyzer.firebaseapp.com",
+        projectId: "sports-card-analyzer",
+        storageBucket: "sports-card-analyzer.firebasestorage.app",
+        messagingSenderId: "27312906394",
+        appId: "1:27312906394:web:11296b8bb530daad5a7f23",
+        measurementId: "G-YNZTKCHQT0"
+      };
+    </script>
+    <script type="module" crossorigin src="./assets/index-CAM4rzJ6.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-Cdi3cwHH.css">
   </head>
   <body>
     <div id="root"></div>

@@ -42,7 +42,7 @@ VITE_FIREBASE_APP_ID=your-app-id
 VITE_FIREBASE_MEASUREMENT_ID=your-measurement-id
 
 # API URL (for serverless functions)
-VITE_API_URL=/api
+VITE_API_URL=http://localhost:3001
 
 # Frontend URL (replace with your Vercel URL after deployment)
 FRONTEND_URL=https://your-app.vercel.app

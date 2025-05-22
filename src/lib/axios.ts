@@ -1,6 +1,12 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+// Use the globally defined API_URL from env.js if available, otherwise use environment variable or fallback
+const API_URL = (typeof window !== 'undefined' && (window as any).API_URL) || 
+                import.meta.env.VITE_API_URL || 
+                'http://localhost:3001';
+
+// Log the API URL being used
+console.log('Axios using API URL:', API_URL);
 
 export const axiosClient = axios.create({
   baseURL: API_URL,

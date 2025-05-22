@@ -16,5 +16,4 @@ export interface Card {
   createdAt: string;
   updatedAt: string;
   source?: string;  // Source of the card data, e.g., 'collection', 'eBay', etc.
-  isDeleted?: boolean;  // Flag to indicate if the card has been deleted
 } 

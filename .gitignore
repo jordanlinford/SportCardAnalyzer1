@@ -64,3 +64,6 @@ server/.env
 
 # Never commit backend secrets
 server/.env
+
+# Local Netlify folder
+.netlify

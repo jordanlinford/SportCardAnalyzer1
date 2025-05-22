@@ -21,7 +21,10 @@ import puppeteer from 'puppeteer';
 import NodeCache from 'node-cache';
 import { fetchEbayImages } from './ebayImageScraper.js';
 import morgan from 'morgan';
-
+const cors = require('cors');
+app.use(cors({
+  origin: '*'  // This allows all origins for now
+}));
 // Load .env in this directory, regardless of where node was started
 dotenv.config({ path: path.join(__dirname, '.env') });
 
