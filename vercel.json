@@ -1,24 +1,8 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "server/api/**/*.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/scrape",
-      "dest": "/server/api/scraper.js"
-    },
-    {
-      "src": "/api/health",
-      "dest": "/server/api/health.js"
-    },
-    {
-      "src": "/api/(.*)",
-      "dest": "/server/api/$1"
-    }
-  ],
-  "public": true
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 } 
