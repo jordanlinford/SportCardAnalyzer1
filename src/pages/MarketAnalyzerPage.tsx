@@ -106,6 +106,12 @@ const enhanceImageUrl = (url: string): string => {
   if (!url || typeof url !== 'string') return '';
   
   try {
+    // Handle images from our local server cache
+    if (url.startsWith('/images/')) {
+      const backendURL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
+      return `${backendURL}${url}`;
+    }
+    
     // Convert webp to jpg (ebay images often work better as jpg)
     if (url.endsWith('.webp')) {
       url = url.replace('.webp', '.jpg');
@@ -120,7 +126,8 @@ const enhanceImageUrl = (url: string): string => {
     if (url.startsWith('/')) {
       // If the path is our cached images (served by Express on API_URL), prefix accordingly
       if (url.startsWith('/images/')) {
-        url = `${API_URL}${url}`;
+        const backendURL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
+        return `${backendURL}${url}`;
       } else {
         url = `https://www.ebay.com${url}`;
       }
@@ -248,26 +255,33 @@ const CardImage = ({ src, alt, className = "" }: CardImageProps) => {
     if (retries < 1) {
       setRetries(retries + 1);
       const cacheBuster = `?t=${Date.now()}`;
-      const newSrc = currentSrc.includes('?') ? 
-        `${currentSrc.split('?')[0]}${cacheBuster}` : 
-        `${currentSrc}${cacheBuster}`;
+      let newSrc = currentSrc.replace(/\?t=\d+$/, '') + cacheBuster;
       setCurrentSrc(newSrc);
       return;
     }
     
-    // If we've tried cache busting, move to the next fallback image
-    const currentIndex = fallbackImages.findIndex(url => url.replace(/\?t=\d+$/, '') === currentSrc.replace(/\?t=\d+$/, ''));
-    const nextIndex = currentIndex === -1 ? 0 : currentIndex + 1;
-    
-    if (nextIndex < fallbackImages.length) {
-      // Try the next fallback image
-      console.log(`Trying fallback image ${nextIndex + 1}/${fallbackImages.length}`);
-      setCurrentSrc(fallbackImages[nextIndex]);
-      setRetries(0); // Reset retries for the new image
-    } else {
-      // We've exhausted all options
-      setError(true);
+    // Then try using the backend image proxy for direct eBay URLs
+    if (retries === 1 && currentSrc.includes('ebayimg.com') && !currentSrc.includes('/api/image-proxy')) {
+      setRetries(retries + 1);
+      const backendURL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
+      const proxiedSrc = `${backendURL}/api/image-proxy?url=${encodeURIComponent(currentSrc.replace(/\?t=\d+$/, ''))}`;
+      console.log('Trying proxied URL:', proxiedSrc);
+      setCurrentSrc(proxiedSrc);
+      return;
     }
+    
+    // Finally try a fallback image from the chain
+    if (retries >= 2 && fallbackImages.length > 0) {
+      const fallbackIndex = Math.min(retries - 2, fallbackImages.length - 1);
+      const fallback = fallbackImages[fallbackIndex];
+      console.log(`Using fallback #${fallbackIndex}:`, fallback);
+      setCurrentSrc(fallback);
+      setRetries(retries + 1);
+      return;
+    }
+    
+    // Ultimate failure, show error state
+    setError(true);
   };
   
   // If there's no source or an error occurred and we're out of fallbacks, show the final fallback
@@ -470,14 +484,20 @@ const getCardImageUrl = (title: string = "", grade: string = ""): string => {
     if (!raw) return '';
     if (raw.includes('/api/image-proxy')) return raw; // Already proxied
     
+    // Handle images from our local server cache at /images/
+    if (raw.startsWith('/images/')) {
+      const backendURL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
+      return `${backendURL}${raw}`;
+    }
+    
     // For testing, use direct URLs for known images - no proxying
     if (raw.includes('ebayimg.com')) {
-      // Temporarily use direct eBay URLs to bypass proxy issues
-      return raw;
+      const backendURL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
+      return `${backendURL}/api/image-proxy?url=${encodeURIComponent(raw)}`;
     }
     
     // Otherwise use the API URL for proxying
-    const apiBase = API_URL || "http://localhost:3001";
+    const apiBase = import.meta.env.VITE_API_URL || "http://localhost:3001";
     return `${apiBase}/api/image-proxy?url=${encodeURIComponent(raw)}`;
   };
   
@@ -1328,24 +1348,11 @@ export default function MarketAnalyzerPage() {
 
   // Add the findBestImage function
   const findBestImage = (listings: ScrapedListing[]): string => {
-    // Default fallback image
-    const fallbackImage = 'https://placehold.co/500x700/e1e1f1/4a4a4a?text=No+Image+Available';
-    
-    // Handle no listings case
-    if (!listings || !Array.isArray(listings) || listings.length === 0) {
-      console.log('No listings provided to findBestImage');
-      return fallbackImage;
-    }
+    const fallbackImage = "https://placehold.co/400x600/f1f1f1/333333?text=Card+Image";
     
     try {
-      // First, look for any listing whose imageUrl starts with "/images/" – this means the
-      // backend has already cached it locally and it will load reliably without hot-linking.
-      const cached = listings.find(l => typeof l.imageUrl === 'string' && l.imageUrl.startsWith('/images/'));
-      if (cached) {
-        return `${API_URL}${cached.imageUrl}`; // prefix so browser hits the Node server
-      }
+      if (!listings || listings.length === 0) return fallbackImage;
       
-      // Extract information from first listing
       const firstListing = listings[0];
       const title = firstListing?.title || '';
       const grade = firstListing?.grade || detectGrade(title);
@@ -1364,8 +1371,11 @@ export default function MarketAnalyzerPage() {
       // For all other cards, try to find a good image from the listings
       for (const listing of listings) {
         if (listing?.imageUrl && typeof listing.imageUrl === 'string' && listing.imageUrl.trim() !== '') {
-          // If it is still a relative /images/ path, prefix with API_URL
-          if (listing.imageUrl.startsWith('/images/')) return `${API_URL}${listing.imageUrl}`;
+          // If it is still a relative /images/ path, prefix with backend URL
+          if (listing.imageUrl.startsWith('/images/')) {
+            const backendURL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
+            return `${backendURL}${listing.imageUrl}`;
+          }
           return listing.imageUrl;
         }
       }
@@ -1408,17 +1418,26 @@ export default function MarketAnalyzerPage() {
       // Use a direct development endpoint for testing
       console.log(`Searching for: ${searchQuery}`);
       
-      // Try using a simple GET request for testing
-      const response = await fetch(`/api/text-search`, {
+      // Use backend from environment variable or localhost as fallback
+      const backendURL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
+      
+      console.log(`Sending request to ${backendURL}/api/text-search with query: ${searchQuery}`);
+      
+      const response = await fetch(`${backendURL}/api/text-search`, {
         method: 'POST',
+        mode: 'cors',
+        credentials: 'omit',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ 
           query: searchQuery,
           limit: 80
         }),
       });
+      
+      // Log response status for debugging
+      console.log(`Response status: ${response.status}`);
       
       if (!response.ok) {
         throw new Error(`Server returned ${response.status}`);
@@ -1737,7 +1756,7 @@ export default function MarketAnalyzerPage() {
 
       // Use the same API endpoint but with different parameters
       const apiUrl = API_URL;
-      const response = await fetch(`${apiUrl.replace(/\/$/, '')}/api/text-search`, {
+      const response = await fetch(`/.netlify/functions/text-search`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -3196,4 +3215,4 @@ const VariationImage = ({ src, alt = "Card", className = "" }: { src?: string; a
   );
 };
 
-// The fetchCardData function was moved inside the main component
+  // The fetchCardData function was moved inside the main component
