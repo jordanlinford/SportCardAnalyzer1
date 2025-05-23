@@ -3,12 +3,6 @@
   functions = "netlify/functions"
   command = "npm run build"
 
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/:splat"
-  status = 200
-  force = true
-
 [dev]
   command = "npm run dev:client"
   port = 8888
@@ -16,6 +10,22 @@
   publish = "dist"
   framework = "vite"
   autoLaunch = true
+
+[[redirects]]
+  from = "/api/text-search"
+  to = "/.netlify/edge-functions/text-search"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = true
+
+[[edge_functions]]
+  path = "/api/text-search"
+  function = "text-search"
 
 [[headers]]
   for = "/*"
