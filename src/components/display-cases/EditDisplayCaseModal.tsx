@@ -105,7 +105,11 @@ export function EditDisplayCaseModal({ isOpen, onClose, displayCase }: EditDispl
             publicId: displayCase.id,
             userId: user.uid,
             ownerName: user.displayName || "Anonymous", 
-            createdAt: displayCase.createdAt,
+            createdAt: displayCase.createdAt || new Date(),
+            updatedAt: new Date(),
+            likes: 0,
+            visits: 0,
+            comments: [],
             // Explicitly include cardIds from the original display case to ensure they're copied
             cardIds: displayCase.cardIds || []
           };
@@ -136,11 +140,22 @@ export function EditDisplayCaseModal({ isOpen, onClose, displayCase }: EditDispl
           const publicSnap = await getDoc(publicRef);
           if (publicSnap.exists()) {
             // Include cardIds when updating public display case
-            const publicUpdateData = {
+            const publicUpdateData: any = {
               ...updateData,
               publicId: displayCase.id,
+              userId: user.uid,
+              ownerName: user.displayName || "Anonymous",
+              updatedAt: new Date(),
               cardIds: displayCase.cardIds || []
             };
+            
+            // Preserve existing likes, visits, and comments
+            const existingData = publicSnap.data();
+            if (existingData) {
+              if (existingData.likes) publicUpdateData.likes = existingData.likes;
+              if (existingData.visits) publicUpdateData.visits = existingData.visits;
+              if (existingData.comments) publicUpdateData.comments = existingData.comments;
+            }
             
             console.log("Updating existing public copy with data:", publicUpdateData);
             await updateDoc(publicRef, publicUpdateData);
@@ -154,7 +169,11 @@ export function EditDisplayCaseModal({ isOpen, onClose, displayCase }: EditDispl
               publicId: displayCase.id,
               userId: user.uid,
               ownerName: user.displayName || "Anonymous",
-              createdAt: displayCase.createdAt,
+              createdAt: displayCase.createdAt || new Date(),
+              updatedAt: new Date(),
+              likes: 0,
+              visits: 0,
+              comments: [],
               // Explicitly include cardIds
               cardIds: displayCase.cardIds || []
             };

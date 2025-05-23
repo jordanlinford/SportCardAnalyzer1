@@ -67,7 +67,9 @@ export function CreateDisplayCaseModal({ isOpen, onClose }: CreateDisplayCaseMod
       if (isPublic && user) {
         console.log("Creating public copy of display case");
         const publicRef = doc(db, "public_display_cases", displayCaseId);
-        await setDoc(publicRef, {
+        
+        // Create a complete public display case document with all necessary fields
+        const publicDisplayCase = {
           name: name.trim(),
           cardIds,
           isPublic: true,
@@ -75,9 +77,17 @@ export function CreateDisplayCaseModal({ isOpen, onClose }: CreateDisplayCaseMod
           theme,
           userId: user.uid,
           ownerName: user.displayName || "Anonymous",
-          createdAt: new Date()
-        });
-        console.log("Public copy created successfully");
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          id: displayCaseId,
+          publicId: displayCaseId,
+          likes: 0,
+          visits: 0,
+          comments: []
+        };
+        
+        await setDoc(publicRef, publicDisplayCase);
+        console.log("Public copy created successfully with data:", publicDisplayCase);
       } else {
         console.log("Display case is private, skipping public copy creation");
       }

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { collection, query, where, getDocs, deleteDoc, doc, getDoc, updateDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, deleteDoc, doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { DisplayCase } from "@/types/display-case";
 import { useAuth } from "@/context/AuthContext";
@@ -43,6 +43,23 @@ export function useDisplayCases() {
               visits: publicData.visits || displayCase.visits || 0
             } as DisplayCase;
           }
+          
+          // If the display case should be public but doesn't exist in public collection
+          if (displayCase.isPublic) {
+            console.log(`Display case ${docSnapshot.id} is marked public but not found in public collection. Recreating.`);
+            await setDoc(publicRef, {
+              ...displayCase,
+              publicId: displayCase.id,
+              userId: user.uid,
+              ownerName: user.displayName || "Anonymous",
+              updatedAt: new Date(),
+              createdAt: displayCase.createdAt || new Date(),
+              likes: displayCase.likes || 0,
+              visits: displayCase.visits || 0,
+              comments: displayCase.comments || []
+            });
+            console.log(`Recreated missing public display case ${docSnapshot.id}`);
+          }
         } catch (error) {
           console.error("Error fetching public display case:", error);
         }
@@ -60,7 +77,22 @@ export function useDisplayCases() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      await deleteDoc(doc(db, "users", user!.uid, "display_cases", id));
+      if (!user) throw new Error("User must be authenticated to delete a display case");
+      
+      // Also delete the public version if it exists
+      try {
+        const publicRef = doc(db, "public_display_cases", id);
+        const publicSnapshot = await getDoc(publicRef);
+        if (publicSnapshot.exists()) {
+          await deleteDoc(publicRef);
+          console.log(`Deleted public display case ${id}`);
+        }
+      } catch (error) {
+        console.error(`Error deleting public display case ${id}:`, error);
+      }
+      
+      // Delete from user's collection
+      await deleteDoc(doc(db, "users", user.uid, "display_cases", id));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
@@ -86,6 +118,46 @@ export function useDisplayCases() {
         ...data,
         updatedAt: new Date()
       });
+      
+      // If the display case is public, update the public version too
+      try {
+        const displayCaseSnap = await getDoc(displayCaseRef);
+        if (displayCaseSnap.exists()) {
+          const displayCase = displayCaseSnap.data() as DisplayCase;
+          if (displayCase.isPublic) {
+            const publicRef = doc(db, "public_display_cases", id);
+            const publicSnapshot = await getDoc(publicRef);
+            
+            if (publicSnapshot.exists()) {
+              // Update existing public display case
+              await updateDoc(publicRef, {
+                ...data,
+                updatedAt: new Date()
+              });
+              console.log(`Updated public display case ${id}`);
+            } else {
+              // Create public display case if it doesn't exist
+              await setDoc(publicRef, {
+                ...displayCase,
+                ...data,
+                id,
+                publicId: id,
+                userId: user.uid,
+                ownerName: user.displayName || "Anonymous",
+                updatedAt: new Date(),
+                createdAt: displayCase.createdAt || new Date(),
+                likes: displayCase.likes || 0,
+                visits: displayCase.visits || 0,
+                comments: displayCase.comments || []
+              });
+              console.log(`Created missing public display case ${id}`);
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Error updating public display case ${id}:`, error);
+      }
+      
       return id;
     },
     onSuccess: () => {
