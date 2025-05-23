@@ -1,54 +1,39 @@
-// This script generates a JavaScript file with Firebase configuration from environment variables
-// to be included in the built application
+// This script generates a JavaScript file with environment variables
+// that will be available at runtime in the browser
 
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-// Function to create the env.js file with Firebase config
-function generateEnvFile() {
-  console.log('Generating env.js file with Firebase configuration...');
-  
-  // Get environment variables
-  const firebaseConfig = {
-    apiKey: process.env.VITE_FIREBASE_API_KEY || 'MISSING_API_KEY',
-    authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || 'MISSING_AUTH_DOMAIN',
-    projectId: process.env.VITE_FIREBASE_PROJECT_ID || 'MISSING_PROJECT_ID',
-    storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || 'MISSING_STORAGE_BUCKET',
-    messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || 'MISSING_MESSAGING_SENDER_ID',
-    appId: process.env.VITE_FIREBASE_APP_ID || 'MISSING_APP_ID',
-    measurementId: process.env.VITE_FIREBASE_MEASUREMENT_ID || 'MISSING_MEASUREMENT_ID'
-  };
-  
-  // Get API URL
-  const apiUrl = process.env.VITE_API_URL || 'http://localhost:3001';
-  console.log('Using API URL:', apiUrl);
-  
-  // Create JavaScript content
-  const fileContent = `// This file was generated during the build process
-// It contains the Firebase configuration for the application
-window.firebaseConfig = ${JSON.stringify(firebaseConfig, null, 2)};
+// Get the current file's directory
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// Set API URL globally
+// Environment variables to include
+const apiUrl = process.env.VITE_API_URL || '/api';
+const firebaseProjectId = process.env.VITE_FIREBASE_PROJECT_ID || 'sports-card-analyzer';
+
+// Path to output file
+const outputPath = path.join(__dirname, '..', 'dist', 'env.js');
+
+// Content of the file
+const content = `
 window.API_URL = "${apiUrl}";
+window.firebaseConfig = {
+  apiKey: "${process.env.VITE_FIREBASE_API_KEY || 'AIzaSyAfb2YtBxD5YEWrNpG0J3GN_g0ZfPzsoOE'}",
+  authDomain: "${process.env.VITE_FIREBASE_AUTH_DOMAIN || 'sports-card-analyzer.firebaseapp.com'}",
+  projectId: "${firebaseProjectId}",
+  storageBucket: "${process.env.VITE_FIREBASE_STORAGE_BUCKET || 'sports-card-analyzer.appspot.com'}",
+  messagingSenderId: "${process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '27312906394'}",
+  appId: "${process.env.VITE_FIREBASE_APP_ID || '1:27312906394:web:11296b8bb530daad5a7f23'}",
+  measurementId: "${process.env.VITE_FIREBASE_MEASUREMENT_ID || 'G-YNZTKCHQT0'}"
+};
+`;
 
-// Log that Firebase config was loaded
-console.log("Firebase config loaded from env.js:", {
-  projectId: window.firebaseConfig.projectId,
-  hasApiKey: !!window.firebaseConfig.apiKey,
-  hasAuthDomain: !!window.firebaseConfig.authDomain
-});
-console.log("API URL configured as:", window.API_URL);`;
+// Create the file
+fs.writeFileSync(outputPath, content);
 
-  // Ensure dist directory exists
-  const distDir = path.resolve(process.cwd(), 'dist');
-  if (!fs.existsSync(distDir)) {
-    fs.mkdirSync(distDir, { recursive: true });
-  }
-  
-  // Write to file
-  fs.writeFileSync(path.join(distDir, 'env.js'), fileContent);
-  console.log('Successfully generated env.js in dist directory');
-}
-
-// Run the function
-generateEnvFile(); 
+console.log('Generating env.js file with Firebase configuration...');
+console.log(`Using API URL: ${apiUrl}`);
+console.log(`Using Firebase projectId: ${firebaseProjectId}`);
+console.log('Successfully generated env.js in dist directory'); 
