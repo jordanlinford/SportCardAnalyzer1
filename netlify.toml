@@ -1,7 +1,7 @@
 [build]
   publish = "dist"
   functions = "netlify/functions"
-  command = "npm run build"
+  command = "[ \"$SKIP_BUILD\" ] && echo 'Skipping build' || npm run build"
 
 [dev]
   command = "npm run dev:client"
