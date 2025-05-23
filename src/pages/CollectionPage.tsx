@@ -89,7 +89,9 @@ const CollectionPage: React.FC = () => {
           message?: string;
         }
         
-        const healthCheck = await axios.get<HealthCheckResponse>('http://localhost:3001/api/health');
+        const backendURL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
+        const healthCheck = await axios.get<HealthCheckResponse>(`${backendURL}/api/health`);
+        
         if (!healthCheck.data || healthCheck.data.status !== 'ok') {
           toast.error("eBay scraper server is not responding properly. Make sure it's running.");
           setUpdatingCardIds(prev => prev.filter(id => id !== card.id));
@@ -111,23 +113,13 @@ const CollectionPage: React.FC = () => {
         return;
       }
 
-      // Prepare search parameters for the scraper API
-      const searchParams = {
-        playerName: card.playerName,
-        year: card.year,
-        cardSet: card.cardSet,
-        cardNumber: card.cardNumber,
-        variation: card.variation,
-        grade: getFormattedGrade(card.condition)
-      };
-
-      // Log the exact search parameters for debugging
-      console.log("Search parameters being sent to eBay scraper:", searchParams);
-      
       // Create a more accurate search string that includes ALL card details
-      const fullSearchString = `${card.year} ${card.playerName} ${card.cardSet} ${card.variation || ''} ${card.cardNumber} ${card.condition}`.trim();
-      console.log("Full search string that would be used manually:", fullSearchString);
-
+      const fullSearchString = `${card.year} ${card.playerName} ${card.cardSet} ${card.variation || ''} ${card.cardNumber || ''} ${card.condition || ''}`.trim();
+      console.log("Full search string:", fullSearchString);
+      
+      // Use the backend URL from environment variable with fallback to localhost
+      const backendURL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
+      
       // Call the scraper API to get latest sales data
       interface ScrapeResponse {
         success: boolean;
@@ -136,21 +128,21 @@ const CollectionPage: React.FC = () => {
           price: number;
           totalPrice?: number;
         }[];
-        count: number;
       }
       
       console.log(`Fetching data for: ${card.playerName} ${card.year} ${card.cardSet}`);
       
       try {
-        // Add the fullSearchString to the parameters
-        const enhancedParams = {
-          ...searchParams,
-          fullSearchString: fullSearchString, // Add this for more accurate searching
-          useFullSearch: true // Tell the scraper to prioritize the full search string
-        };
-
-        // Use the absolute URL with the correct port instead of a relative URL
-        const response = await axios.post<ScrapeResponse>(`${API_URL.replace(/\/$/, '')}/api/text-search`, { query: fullSearchString });
+        // Send request to backend server
+        const response = await axios.post<ScrapeResponse>(
+          `${backendURL}/api/text-search`, 
+          { query: fullSearchString },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          }
+        );
         
         console.log(`Response for ${card.playerName}: success=${response.data.success}, listings=${response.data.listings?.length || 0}`);
         
@@ -169,12 +161,12 @@ const CollectionPage: React.FC = () => {
             const averagePrice = totalPrice / recentSales.length;
             console.log(`Found value for ${card.playerName}: $${averagePrice} (from ${recentSales.length} recent sales)`);
             
-            // Always update if significantly different (1% difference is enough)
-            // Removed the strict validation for single card updates
+            // Update the card with the new value
             if (averagePrice > 0) {
               const oldValue = card.currentValue || 0;
               await CardService.updateCard(user.uid, card.id, {
                 currentValue: averagePrice,
+                updatedAt: new Date().toISOString(),
               });
               toast.success(`Updated ${card.playerName} value from $${oldValue.toFixed(2)} to $${averagePrice.toFixed(2)}`);
               retryFetchCards();
@@ -211,16 +203,56 @@ const CollectionPage: React.FC = () => {
 
     setIsUpdatingValues(true);
     try {
-      const resp = await axios.post<UpdateResp>(`${API_URL.replace(/\/$/, '')}/api/update-collection/${user.uid}`);
-      if (resp.data.success) {
-        toast.success(`Updated values for ${resp.data.updatedCount || 0} cards`);
-        await retryFetchCards();
-      } else {
-        toast.error(resp.data.message || 'Failed to update collection');
+      // Update multiple cards in sequence
+      const cardsToUpdate = filteredCards.filter(card => 
+        card.playerName && card.year && card.cardSet
+      );
+      
+      if (cardsToUpdate.length === 0) {
+        toast.info('No cards with complete information found to update');
+        setIsUpdatingValues(false);
+        return;
       }
+      
+      toast.info(`Updating values for ${cardsToUpdate.length} cards...`);
+      
+      let successCount = 0;
+      let errorCount = 0;
+      
+      // Update cards one by one to avoid overwhelming the server
+      for (const card of cardsToUpdate) {
+        try {
+          // Add to updating IDs list
+          setUpdatingCardIds(prev => [...prev, card.id]);
+          
+          // Wait a bit between requests to be nice to the server
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          await handleUpdateSingleCard(card);
+          successCount++;
+        } catch (error) {
+          console.error(`Error updating card ${card.id}:`, error);
+          errorCount++;
+        } finally {
+          // Remove from updating IDs list
+          setUpdatingCardIds(prev => prev.filter(id => id !== card.id));
+        }
+      }
+      
+      // Final status update
+      if (successCount > 0) {
+        toast.success(`Updated values for ${successCount} cards`);
+      }
+      
+      if (errorCount > 0) {
+        toast.error(`Failed to update ${errorCount} cards`);
+      }
+      
+      // Refresh cards data
+      await retryFetchCards();
     } catch (err: any) {
-      console.error('Server update error', err);
-      toast.error(err?.message || 'Server error');
+      console.error('Batch update error', err);
+      toast.error(err?.message || 'Failed to update collection');
     } finally {
       setIsUpdatingValues(false);
     }
