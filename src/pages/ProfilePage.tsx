@@ -66,6 +66,39 @@ export default function ProfilePage() {
     cardCount: 0
   });
 
+  // New state: selected profile picture file
+  const [profilePicFile, setProfilePicFile] = useState<File | null>(null);
+
+  // Upload handler for profile picture
+  const handleUpdateProfilePic = async () => {
+    if (!user || !profilePicFile) return;
+
+    setIsLoading(true);
+    try {
+      const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
+      const storage = getStorage();
+
+      const storageRef = ref(storage, `user-profiles/${user.uid}/${profilePicFile.name}`);
+      const snapshot = await uploadBytes(storageRef, profilePicFile);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+
+      await updateProfile({ photoURL: downloadURL });
+
+      setUserData((prev: any) => ({
+        ...prev,
+        photoURL: downloadURL,
+      }));
+
+      setProfilePicFile(null);
+      toast.success('Profile picture updated successfully');
+    } catch (error: any) {
+      console.error('Error updating profile picture:', error);
+      toast.error(error.message || 'Failed to update profile picture');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Load user data
   useEffect(() => {
     const fetchUserData = async () => {
@@ -375,47 +408,26 @@ export default function ProfilePage() {
                   id="profile-picture"
                   type="file"
                   accept="image/*"
-                  onChange={async (e) => {
-                    if (!user || !e.target.files || !e.target.files[0]) return;
-                    
-                    const file = e.target.files[0];
-                    setIsLoading(true);
-                    
-                    try {
-                      // Import storage for image uploads
-                      const { getStorage, ref, uploadBytes, getDownloadURL } = await import('firebase/storage');
-                      const storage = getStorage();
-                      
-                      // Create a reference to the file location
-                      const storageRef = ref(storage, `user-profiles/${user.uid}/${file.name}`);
-                      
-                      // Upload the file
-                      const snapshot = await uploadBytes(storageRef, file);
-                      
-                      // Get download URL
-                      const downloadURL = await getDownloadURL(snapshot.ref);
-                      
-                      // Update user profile
-                      await updateProfile({ photoURL: downloadURL });
-                      
-                      // Update UI
-                      setUserData({
-                        ...userData,
-                        photoURL: downloadURL
-                      });
-                      
-                      toast.success('Profile picture updated successfully');
-                    } catch (error: any) {
-                      console.error('Error updating profile picture:', error);
-                      toast.error(error.message || 'Failed to update profile picture');
-                    } finally {
-                      setIsLoading(false);
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      setProfilePicFile(e.target.files[0]);
                     }
                   }}
                 />
-                <p className="text-xs text-muted-foreground">
-                  JPG, PNG or GIF, max 2MB
-                </p>
+                <div className="flex gap-2 items-center">
+                  <Button
+                    onClick={handleUpdateProfilePic}
+                    disabled={isLoading || !profilePicFile}
+                  >
+                    Update Picture
+                  </Button>
+                  {profilePicFile && (
+                    <span className="text-sm text-muted-foreground truncate max-w-[140px]">
+                      {profilePicFile.name}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">JPG, PNG or GIF, max 2MB</p>
               </div>
             </div>
           </div>
