@@ -27,6 +27,14 @@
   path = "/api/text-search"
   function = "text-search"
 
+[[edge_functions]]
+  path = "/display-cases/*"
+  function = "display-case-og"
+
+[[edge_functions]]
+  path = "/public/*"
+  function = "display-case-og"
+
 [[headers]]
   for = "/*"
   [headers.values]
