@@ -17,4 +17,4 @@ ENV NODE_ENV=production
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 # Start the server
-CMD ["node", "server.js"] 
+CMD ["node", "server.js"]
