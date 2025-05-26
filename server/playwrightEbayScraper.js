@@ -1,4 +1,4 @@
-import { chromium } from 'playwright';
+import { firefox } from 'playwright';
 import { promises as fs } from 'fs';
 import path from 'path';
 
@@ -36,16 +36,15 @@ async function launchBrowser() {
     options.args = [
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--disable-gpu',
-      '--single-process'
+      '--disable-dev-shm-usage'
     ];
+    options.firefoxUserPrefs = {
+      'media.navigator.streams.fake': true,
+      'browser.cache.disk.enable': false
+    };
   }
 
-  return await chromium.launch(options);
+  return await firefox.launch(options);
 }
 
 export async function scrapeByText(query, maxItems = 60) {
@@ -54,9 +53,12 @@ export async function scrapeByText(query, maxItems = 60) {
   const page = await context.newPage();
 
   try {
+    console.log('Navigating to eBay search URL...');
     await page.goto(SOLD_URL(query), { waitUntil: 'networkidle', timeout: DEFAULT_TIMEOUT });
+    console.log('Page loaded, scrolling...');
     await autoScroll(page);
 
+    console.log('Extracting listings...');
     const listings = await page.$$eval('.s-item', (elements, max) => {
       const parsePrice = (txt) => parseFloat(txt.replace(/[^0-9.]/g, ''));
       const results = [];
@@ -95,27 +97,35 @@ export async function scrapeByText(query, maxItems = 60) {
       return results;
     }, maxItems);
 
+    console.log(`Found ${listings.length} listings`);
     return listings;
+  } catch (error) {
+    console.error('Error during scraping:', error);
+    throw error;
   } finally {
     await browser.close();
   }
 }
 
 export async function scrapeByImage(localImagePath, maxItems = 60) {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser();
   const context = await browser.newContext({ userAgent: randomUserAgent() });
   const page = await context.newPage();
 
   try {
-    // Navigate to eBay image search (beta url)
+    console.log('Navigating to eBay image search...');
     await page.goto('https://www.ebay.com/sl/img', { waitUntil: 'networkidle', timeout: DEFAULT_TIMEOUT });
     const input = await page.$('input[type="file"]');
     if (!input) throw new Error('Could not find image upload input');
+    
+    console.log('Uploading image...');
     await input.setInputFiles(localImagePath);
 
+    console.log('Waiting for results...');
     await page.waitForSelector('.s-item', { timeout: DEFAULT_TIMEOUT });
     await autoScroll(page);
 
+    console.log('Extracting listings...');
     const listings = await page.$$eval('.s-item', (elements, max, isRealImageFn) => {
       const parsePrice = (txt) => parseFloat(txt.replace(/[^0-9.]/g, ''));
       const results = [];
@@ -145,7 +155,11 @@ export async function scrapeByImage(localImagePath, maxItems = 60) {
       return results;
     }, maxItems, isRealImage.toString());
 
+    console.log(`Found ${listings.length} listings`);
     return listings;
+  } catch (error) {
+    console.error('Error during image search:', error);
+    throw error;
   } finally {
     await browser.close();
   }
