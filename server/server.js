@@ -19,6 +19,10 @@ const app = express();
 const port = process.env.PORT || 3000;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+console.log('Starting server initialization...');
+console.log(`Environment: ${process.env.NODE_ENV}`);
+console.log(`Port: ${port}`);
+
 // Create images directory if it doesn't exist
 const IMAGES_DIR = path.join(__dirname, 'images');
 if (!fs.existsSync(IMAGES_DIR)) {
@@ -55,6 +59,15 @@ app.use(express.json());
 
 // Static file middleware for serving cached images
 app.use('/images', express.static(path.join(__dirname, 'images')));
+
+// Root path handler
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'Sports Card Analyzer API is running',
+    version: '1.0.0'
+  });
+});
 
 // Initialize Firebase Admin
 const serviceAccount = JSON.parse(
@@ -118,7 +131,7 @@ app.get('/api/health', (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error('Unhandled error:', err.stack);
   res.status(500).json({
     error: 'Internal Server Error',
     message: process.env.NODE_ENV === 'development' ? err.message : undefined
@@ -126,6 +139,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-app.listen(port, () => {
+app.listen(port, '0.0.0.0', () => {
   console.log(`Server running on port ${port}`);
+  console.log('Server initialization complete');
 }); 
