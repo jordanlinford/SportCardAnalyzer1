@@ -6,8 +6,10 @@ services:
     plan: starter
     region: ohio
     branch: main
-    healthCheckPath: /api/health
+    healthCheckPath: /
     numInstances: 1
+    buildCommand: docker build -t sports-card-analyzer-api .
+    startCommand: docker run -p 3000:3000 sports-card-analyzer-api
     buildFilter:
       paths:
       - server/**
@@ -15,6 +17,12 @@ services:
       - package.json
       - package-lock.json
     port: 3000
+    domains:
+      - sports-card-analyzer-api.onrender.com
+    disk:
+      name: data
+      mountPath: /app/data
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
