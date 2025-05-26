@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "vercel-build": "echo 'Vercel build step for API routes'"
+    "vercel-build": "echo 'Vercel build step for API routes'",
+    "docker:build": "docker build -t sports-card-analyzer .",
+    "docker:start": "docker run -p 10000:10000 sports-card-analyzer"
   },
   "keywords": [],
   "author": "",
@@ -34,5 +36,11 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "description": "API server for Sports Card Analyzer"
+  "description": "API server for Sports Card Analyzer",
+  "render": {
+    "env": "docker",
+    "dockerfilePath": "./Dockerfile",
+    "healthCheckPath": "/",
+    "port": 10000
+  }
 }

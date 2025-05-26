@@ -1,14 +1,11 @@
 services:
   - type: web
     name: SportCardAnalyzer1
+    rootDir: server
     env: docker
-    dockerfilePath: ./server/Dockerfile
     plan: starter
     region: ohio
     branch: main
-    healthCheckPath: /
-    port: 10000
-    rootDir: server
     envVars:
       - key: NODE_ENV
         value: production
