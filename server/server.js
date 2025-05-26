@@ -16,7 +16,7 @@ import vision from '@google-cloud/vision';
 import Stripe from 'stripe';
 
 const app = express();
-const port = process.env.PORT || 3001;
+const port = process.env.PORT || 3000;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Create images directory if it doesn't exist
