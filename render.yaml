@@ -3,6 +3,17 @@ services:
     name: sports-card-analyzer-api
     env: docker
     dockerfilePath: ./Dockerfile
+    plan: starter
+    region: ohio
+    branch: main
+    healthCheckPath: /api/health
+    numInstances: 1
+    buildFilter:
+      paths:
+      - server/**
+      - Dockerfile
+      - package.json
+      - package-lock.json
     port: 3000
     envVars:
       - key: NODE_ENV
