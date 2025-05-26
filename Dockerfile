@@ -24,7 +24,7 @@ RUN mkdir -p /app/server/images /app/credentials
 # Set environment variables
 ENV NODE_ENV=production
 ENV DISPLAY=:99
-ENV PORT=3000
+ENV PORT=10000
 
 # Create start script
 RUN echo '#!/bin/bash\n\
@@ -32,6 +32,9 @@ Xvfb :99 -screen 0 1024x768x16 &\n\
 sleep 1\n\
 exec node server/server.js' > /app/start.sh && \
     chmod +x /app/start.sh
+
+# Expose the port
+EXPOSE 10000
 
 # Start the application
 CMD ["/app/start.sh"]

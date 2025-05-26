@@ -34,7 +34,7 @@ try {
   console.log(`Current directory: ${process.cwd()}`);
 
   const app = express();
-  const port = process.env.PORT || 3000;
+  const port = process.env.PORT || 10000;
   const __dirname = dirname(fileURLToPath(import.meta.url));
   console.log(`Server directory: ${__dirname}`);
 
@@ -205,6 +205,8 @@ try {
   console.log('Error handling middleware configured');
 
   // Start server
+  console.log('Starting server on port', port);
+
   const server = app.listen(port, '0.0.0.0', () => {
     console.log(`Server running on port ${port}`);
     console.log('Server initialization complete');

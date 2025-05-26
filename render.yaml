@@ -5,13 +5,16 @@ services:
     dockerfilePath: ./Dockerfile
     plan: starter
     region: ohio
+    branch: main
+    healthCheckPath: /
+    port: 10000
     envVars:
       - key: NODE_ENV
         value: production
       - key: DISPLAY
         value: ":99"
       - key: PORT
-        value: "3000"
+        value: "10000"
       - key: FIREBASE_PROJECT_ID
         sync: false
       - key: FIREBASE_PRIVATE_KEY
