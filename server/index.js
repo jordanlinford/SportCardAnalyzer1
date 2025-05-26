@@ -21,6 +21,7 @@ import puppeteer from 'puppeteer';
 import NodeCache from 'node-cache';
 import { fetchEbayImages } from './ebayImageScraper.js';
 import morgan from 'morgan';
+import firefox from 'puppeteer-firefox';
 const cors = require('cors');
 app.use(cors({
   origin: '*'  // This allows all origins for now
@@ -1354,241 +1355,56 @@ app.get('/api/ebay-search', async (req, res) => {
     }
     
     // Not in cache, scrape eBay
-    const browser = await puppeteer.launch({
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    const browser = await firefox.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage'
+      ],
+      firefoxUserPrefs: {
+        'media.navigator.streams.fake': true,
+        'browser.cache.disk.enable': false
+      },
+      executablePath: process.env.PLAYWRIGHT_FIREFOX_PATH || '/usr/bin/firefox-esr'
     });
     
+    const page = await browser.newPage();
     try {
-      const page = await browser.newPage();
+      await page.goto(generateEbayUrl(q), { waitUntil: 'networkidle', timeout: 30000 });
       
-      // Navigate to eBay search results
-      const searchUrl = generateEbayUrl(q);
-      console.log(`➡️  navigating to ${searchUrl}`);
-      
-      await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      
-      // Extract sold listings from the page
-      const listings = await page.evaluate(() => {
-        const results = [];
-        
-        // Get all sold listing items
-        const items = document.querySelectorAll('li.s-item');
-        
-        // Process first 60 listings (or fewer if there aren't enough)
-        for (let i = 1; i < Math.min(items.length, 61); i++) { // Skip the first one (it's usually not a product)
-          const item = items[i];
+      const listings = await page.$$eval('.s-item__wrapper', (elements) => {
+        return elements.map(el => {
+          const title = el.querySelector('.s-item__title')?.textContent?.trim() || '';
+          const priceText = el.querySelector('.s-item__price')?.textContent || '';
+          const price = parseFloat(priceText.replace(/[^0-9.]/g, '')) || 0;
+          const imageUrl = el.querySelector('.s-item__image-img')?.getAttribute('src') || '';
+          const itemUrl = el.querySelector('.s-item__link')?.getAttribute('href') || '';
           
-          // Only process sold items
-          const statusText = item.querySelector('.SECONDARY_INFO')?.innerText;
-          if (!statusText || !statusText.includes('Sold')) continue;
-          
-          // Extract item details
-          const title = item.querySelector('.s-item__title')?.innerText.replace('New Listing', '').trim();
-          const priceText = item.querySelector('.s-item__price')?.innerText;
-          const price = parseFloat(priceText?.replace(/[^0-9.]/g, '')) || 0;
-          
-          // Extract shipping cost
-          const shippingText = item.querySelector('.s-item__shipping, .s-item__logisticsCost')?.innerText;
-          let shipping = 0;
-          if (shippingText) {
-            if (shippingText.includes('Free')) {
-              shipping = 0;
-            } else {
-              shipping = parseFloat(shippingText.replace(/[^0-9.]/g, '')) || 0;
-            }
-          }
-          
-          // Calculate total price
-          const totalPrice = price + shipping;
-          
-          // Extract image URL
-          const imgElement = item.querySelector('.s-item__image-img');
-          let imageUrl = imgElement?.src || imgElement?.getAttribute('data-src') || '';
-          
-          // Extract sold date
-          const dateText = item.querySelector('.s-item__title--tagblock .POSITIVE')?.innerText;
-          const dateSold = dateText || new Date().toLocaleDateString();
-          
-          // Extract listing URL
-          const url = item.querySelector('.s-item__link')?.href || '';
-          
-          // Add to results
-          results.push({
+          return {
             title,
             price,
-            shipping,
-            totalPrice,
-            dateSold,
             imageUrl,
-            url,
+            itemUrl,
             source: 'eBay'
-          });
-        }
-        
-        return results;
+          };
+        }).filter(item => item.title && item.price && !item.title.includes('Shop on eBay'));
       });
       
-      console.log(`  ↳ Found ${listings.length} sold listings`);
+      const result = { success: true, listings };
+      cache.set(cacheKey, result);
       
-      // If we didn't find enough sold listings, try to add active listings
-      if (listings.length < 3) {
-        console.log(`  ↳ Not enough sold listings, adding active listings...`);
-        
-        // Create a search URL for active listings
-        const activeSearchUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(q)}`;
-        console.log(`  ↳ navigating to ${activeSearchUrl}`);
-        
-        await page.goto(activeSearchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        
-        // Extract active listings from the page
-        const activeListings = await page.evaluate(() => {
-          const results = [];
-          
-          // Get all listing items
-          const items = document.querySelectorAll('li.s-item');
-          
-          // Process only first few listings to supplement
-          for (let i = 1; i < Math.min(items.length, 4); i++) { // Skip the first one
-            const item = items[i];
-            
-            // Extract item details
-            const title = item.querySelector('.s-item__title')?.innerText.replace('New Listing', '').trim();
-            const priceText = item.querySelector('.s-item__price')?.innerText;
-            const price = parseFloat(priceText?.replace(/[^0-9.]/g, '')) || 0;
-            
-            // Extract shipping cost
-            const shippingText = item.querySelector('.s-item__shipping, .s-item__logisticsCost')?.innerText;
-            let shipping = 0;
-            if (shippingText) {
-              if (shippingText.includes('Free')) {
-                shipping = 0;
-              } else {
-                shipping = parseFloat(shippingText.replace(/[^0-9.]/g, '')) || 0;
-              }
-            }
-            
-            // Calculate total price
-            const totalPrice = price + shipping;
-            
-            // Extract image URL
-            const imgElement = item.querySelector('.s-item__image-img');
-            let imageUrl = imgElement?.src || imgElement?.getAttribute('data-src') || '';
-            
-            // Extract listing URL
-            const url = item.querySelector('.s-item__link')?.href || '';
-            
-            // Add to results
-            results.push({
-              title,
-              price,
-              shipping,
-              totalPrice,
-              dateSold: 'Active',
-              imageUrl,
-              url,
-              source: 'eBay'
-            });
-          }
-          
-          return results;
-        });
-        
-        console.log(`  ↳ Found ${activeListings.length} active listings`);
-        
-        // Add active listings to the results
-        listings.push(...activeListings);
-      }
-      
-      // Enrich listings with full-size images by visiting the listing pages
-      console.log(`  ↳ Enriching ${listings.length} listings with full-size images…`);
-      
-      // Process in batches to avoid overloading
-      const enrichedListings = [];
-      const batchSize = 10;
-      
-      for (let i = 0; i < listings.length; i += batchSize) {
-        const batch = listings.slice(i, i + batchSize);
-        
-        // Process batch in parallel
-        const enrichedBatch = await Promise.all(
-          batch.map(async (listing) => {
-            try {
-              // Extract eBay item ID from URL
-              const itemIdMatch = listing.url.match(/itm\/(\d+)/);
-              const itemId = itemIdMatch ? itemIdMatch[1] : null;
-              
-              // Generate local cache path
-              let localImagePath = null;
-              if (itemId) {
-                localImagePath = path.join(IMAGES_DIR, `${itemId}.jpg`);
-                // Check if we already have this image cached
-                if (fs.existsSync(localImagePath)) {
-                  // Use the cached image instead of fetching again
-                  listing.imageUrl = `/images/${itemId}.jpg`;
-                  return listing;
-                }
-              }
-              
-              // If not cached, try to get a better image from the listing page
-              if (listing.url && listing.url.includes('ebay.com/itm/')) {
-                const { mainImage } = await fetchEbayImages(listing.url);
-                
-                if (mainImage && itemId) {
-                  // Cache the image locally
-                  const success = await cacheImage(localImagePath, mainImage);
-                  if (success) {
-                    listing.imageUrl = `/images/${itemId}.jpg`;
-                  } else {
-                    // If caching failed, use image proxy
-                    listing.imageUrl = `/api/image-proxy?url=${encodeURIComponent(mainImage)}`;
-                  }
-                } else if (mainImage) {
-                  // No item ID, use proxy
-                  listing.imageUrl = `/api/image-proxy?url=${encodeURIComponent(mainImage)}`;
-                }
-              }
-            } catch (error) {
-              console.error(`Error enriching listing image:`, error.message);
-              // Keep original image URL if enrichment fails
-            }
-            
-            return listing;
-          })
-        );
-        
-        enrichedListings.push(...enrichedBatch);
-      }
-      
-      console.log(`  ↳ Returning ${enrichedListings.length} enriched listings`);
-      
-      // Filter to remove any without prices
-      const validListings = enrichedListings.filter(l => l.totalPrice > 0);
-      
-      // Prepare the response
-      const result = {
-        success: true,
-        listings: validListings,
-        count: validListings.length,
-        query: q
-      };
-      
-      // Cache the result for future requests
-      cache.set(cacheKey, result, 3600); // cache for 1 hour
-      
-      console.log(`  ↳ Found ${validListings.length} sold listings`);
-      console.log(`  ↳ Returning ${validListings.length} total listings`);
-      
+      console.log(`  ↳ Found ${listings.length} listings`);
       return res.json(result);
     } finally {
       await browser.close();
     }
   } catch (error) {
-    console.error('Error in /api/ebay-search endpoint:', error);
+    console.error('Error in eBay search:', error);
     return res.status(500).json({ 
       success: false, 
-      message: error.message || 'An unexpected error occurred',
-      listings: [], 
-      count: 0
+      message: error.message,
+      listings: [] 
     });
   }
 });
