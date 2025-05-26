@@ -39,9 +39,9 @@ async function launchBrowser() {
     };
 
     // If we're in Docker, use the pre-installed browser
-    if (process.env.PLAYWRIGHT_BROWSERS_PATH) {
-      console.log(`Using browser from ${process.env.PLAYWRIGHT_BROWSERS_PATH}`);
-      options.executablePath = `${process.env.PLAYWRIGHT_BROWSERS_PATH}/firefox-1423/firefox/firefox`;
+    if (process.env.NODE_ENV === 'production') {
+      console.log('Running in production, using system Firefox');
+      options.executablePath = '/usr/bin/firefox-esr';
     }
 
     const browser = await firefox.launch(options);
