@@ -1,20 +1,57 @@
-FROM mcr.microsoft.com/playwright:v1.43.0-jammy
+FROM node:18-slim
+
+# Install Firefox and dependencies
+RUN apt-get update && \
+    apt-get install -y \
+    firefox-esr \
+    xvfb \
+    ca-certificates \
+    fonts-liberation \
+    libappindicator3-1 \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libc6 \
+    libcairo2 \
+    libcups2 \
+    libdbus-1-3 \
+    libexpat1 \
+    libfontconfig1 \
+    libgbm1 \
+    libgcc1 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libstdc++6 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxi6 \
+    libxrandr2 \
+    libxrender1 \
+    libxss1 \
+    libxtst6 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
 
-# Install xvfb and Firefox
-RUN apt-get update && \
-    apt-get install -y xvfb firefox-esr && \
-    rm -rf /var/lib/apt/lists/*
-
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies and browsers
-RUN npm install && \
-    npx playwright install firefox && \
-    npx playwright install-deps
+# Install dependencies
+RUN npm install
+
+# Install Playwright Firefox
+RUN npx playwright install firefox
 
 # Copy the rest of the application
 COPY . .
@@ -24,16 +61,13 @@ RUN mkdir -p /app/server/images /app/credentials
 
 # Set environment variables
 ENV NODE_ENV=production
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV DISPLAY=:99
 ENV PORT=3000
 
 # Create start script
 RUN echo '#!/bin/bash\n\
-echo "Starting Xvfb..."\n\
 Xvfb :99 -screen 0 1024x768x16 &\n\
 sleep 1\n\
-echo "Starting Node.js application..."\n\
 exec node server/server.js' > /app/start.sh && \
     chmod +x /app/start.sh
 
