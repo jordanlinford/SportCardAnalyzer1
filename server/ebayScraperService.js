@@ -1,43 +1,16 @@
 // ebayScraperService.js
-// Node.js/Express microservice for eBay scraping, variation grouping, and grade handling.
+// Node.js service for eBay scraping, variation grouping, and grade handling.
 
 import dotenv from 'dotenv'; dotenv.config();
-import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import multer from 'multer';
 import NodeCache from 'node-cache';
 import { firefox } from '@playwright/firefox';
-import { fetchEbayImages } from './ebayImageScraper.js';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
-import cors from 'cors';
-import cheerio from 'cheerio';
 
-const app = express();
 const cache = new NodeCache({ stdTTL: 600 }); // 10 min cache
-
-// Multer setup for image uploads
-const tmpUpload = multer({ dest: 'uploads/' });
-
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    const allowedPatterns = [
-      /^https?:\/\/localhost(:\d+)?$/,
-      /netlify\.app$/,
-      /sportscardanalyzer\.com$/
-    ];
-    if (allowedPatterns.some(re => re.test(origin))) {
-      return callback(null, true);
-    }
-    callback(new Error(`CORS blocked for origin ${origin}`));
-  },
-  credentials: true
-}));
-
-app.use(express.json());
 
 // ---------------------------------------------------------------------------
 // Local image cache directory – we download each listing's main image once
@@ -100,47 +73,6 @@ function groupVariations(items) {
   return Object.values(map);
 }
 
-// --------------------------------------------------
-// Helper: fetch og:image from a listing page once
-// --------------------------------------------------
-async function fetchOgImage(browser, itemUrl) {
-  if (!itemUrl) return '';
-  const cacheKey = `og:${itemUrl}`;
-  const cached = cache.get(cacheKey);
-  if (cached) return cached;
-
-  let og = '';
-  const p = await browser.newPage();
-  try {
-    await p.goto(itemUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-    // Try og:image first (fastest, if present)
-    og = await p.$eval('meta[property="og:image"]', el => el.getAttribute('content')).catch(() => '');
-
-    // ------------------------------------------------------------------
-    // Fallback: many modern eBay pages omit the og:image tag or replace it
-    // with a 1×1 placeholder.  In those cases, the main listing photo is
-    // still available in the <img id="icImg"> element once the DOM has
-    // loaded.  Grabbing its src gives us a full-size JPEG that we can cache.
-    // ------------------------------------------------------------------
-    if (!og) {
-      try {
-        // Wait briefly for the hero image to render; bail quickly on timeout
-        await p.waitForSelector('#icImg', { timeout: 8000 });
-        og = await p.$eval('#icImg', el => el.getAttribute('src'));
-      } catch (_) {
-        /* ignore – image may not be present */
-      }
-    }
-  } catch (_) {
-    /* ignore */
-  } finally {
-    await p.close();
-  }
-
-  if (og) cache.set(cacheKey, og);
-  return og || '';
-}
-
 async function launchBrowser() {
   try {
     console.log('Launching Firefox browser...');
@@ -197,7 +129,13 @@ export async function scrapeEbay(query, maxItems = 60) {
       }).filter(item => item.title && item.price && !item.title.includes('Shop on eBay'));
     });
     
-    return listings.slice(0, maxItems);
+    // Add grade information and group variations
+    const enhancedListings = listings.slice(0, maxItems).map(listing => ({
+      ...listing,
+      grade: extractGrade(listing.title)
+    }));
+    
+    return enhancedListings;
   } catch (error) {
     console.error('Error scraping eBay:', error);
     throw error;
@@ -206,43 +144,4 @@ export async function scrapeEbay(query, maxItems = 60) {
   }
 }
 
-// API Routes
-app.post('/api/text-search', async (req, res) => {
-  const { query, limit = 60 } = req.body;
-  if (!query) return res.status(400).json({ error: 'Missing query' });
-
-  try {
-    const cacheKey = `search:${query}:${limit}`;
-    if (cache.has(cacheKey)) {
-      return res.json({ 
-        success: true, 
-        listings: cache.get(cacheKey),
-        cached: true
-      });
-    }
-
-    const listings = await scrapeEbay(query, limit);
-    cache.set(cacheKey, listings);
-    
-    res.json({ 
-      success: true, 
-      listings,
-      cached: false
-    });
-  } catch (err) {
-    console.error('Search error:', err);
-    res.status(500).json({ 
-      success: false, 
-      message: err.message,
-      listings: []
-    });
-  }
-});
-
-// Health check
-app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
-
-const port = process.env.PORT || 3001;
-app.listen(port, () => console.log(`Server running on port ${port}`));
-
-export { scrapeEbay }; 
+export { groupVariations, extractGrade, normalizeTitle, cacheImage }; 
