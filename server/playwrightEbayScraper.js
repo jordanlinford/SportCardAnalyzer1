@@ -1,4 +1,4 @@
-import { firefox } from 'playwright';
+import { firefox } from '@playwright/firefox';
 import { promises as fs } from 'fs';
 import path from 'path';
 

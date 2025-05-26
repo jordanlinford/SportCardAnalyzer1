@@ -7,7 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
 import NodeCache from 'node-cache';
-import { firefox } from 'playwright';
+import { firefox } from '@playwright/firefox';
 import { fetchEbayImages } from './ebayImageScraper.js';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
