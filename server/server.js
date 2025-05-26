@@ -1,12 +1,19 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import apiRoutes from './api/index.js';
 import path from 'path';
 import fs from 'fs';
 import axios from 'axios';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { firefox } from '@playwright/firefox';
+import { scrapeEbay } from './ebayScraperService.js';
+import { fetchEbayImages } from './ebayImageScraper.js';
+import NodeCache from 'node-cache';
+import multer from 'multer';
+import admin from 'firebase-admin';
+import vision from '@google-cloud/vision';
+import Stripe from 'stripe';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -19,81 +26,95 @@ if (!fs.existsSync(IMAGES_DIR)) {
   console.log('Created local image cache dir', IMAGES_DIR);
 }
 
+// Set up cache for eBay searches
+const cache = new NodeCache({ stdTTL: 3600, checkperiod: 600 }); // 1 hour TTL, check every 10 minutes
+
 // Middleware
 app.use(cors({
-  origin: [
-    'https://sportscardanalyzer.com',
-    'https://www.sportscardanalyzer.com',
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'http://localhost:5135'
-  ],
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true); // allow mobile apps / curl
+
+    const allowedPatterns = [
+      /^https?:\/\/localhost(:\d+)?$/,
+      /netlify\.app$/,
+      /render\.com$/,
+      /sportscardanalyzer\.com$/
+    ];
+
+    if (allowedPatterns.some((re) => re.test(origin))) {
+      return callback(null, true);
+    }
+    callback(new Error(`CORS blocked for origin ${origin}`));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
 app.use(express.json());
 
 // Static file middleware for serving cached images
 app.use('/images', express.static(path.join(__dirname, 'images')));
 
-// Direct image proxy endpoint
-app.get('/api/image-proxy', async (req, res) => {
-  try {
-    const { url } = req.query;
-    if (!url) {
-      return res.status(400).json({ error: 'URL parameter is required' });
-    }
+// Initialize Firebase Admin
+const serviceAccount = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '../credentials/service-account.json'), 'utf8')
+);
+console.log('Using service account:', serviceAccount.client_email);
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+console.log('Firebase Admin initialized successfully');
 
-    console.log('[Image Proxy] Request received for:', url.substring(0, 120) + '...');
+// Initialize Vision API
+if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+  const credsPath = path.join(__dirname, '../credentials/service-account.json');
+  if (fs.existsSync(credsPath)) {
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = credsPath;
+    console.log('GOOGLE_APPLICATION_CREDENTIALS set to', credsPath);
+  }
+}
+const visionClient = new vision.ImageAnnotatorClient();
+console.log('Google Vision client initialized');
+
+// Initialize Stripe
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' });
+
+// Multer setup for file uploads
+const upload = multer({ storage: multer.memoryStorage() });
+
+// API Routes
+app.post('/api/text-search', async (req, res) => {
+  try {
+    const { query, limit = 60 } = req.body;
     
-    // Check if it's a hardcoded Jefferson card image (which don't need proxy)
-    if (url.includes('i.ebayimg.com/images/g/mVwAAOSwsjVkTBkq') || 
-        url.includes('i.ebayimg.com/images/g/YkIAAOSwK3VkoBj3') ||
-        url.includes('i.ebayimg.com/images/g/EkoAAOSwasFll1PQ')) {
-      // Just redirect to the original URL for these known good images
-      return res.redirect(url);
+    if (!query) {
+      return res.status(400).json({ success: false, message: 'search query required' });
     }
     
-    // Create a filename for caching based on URL hash
-    const urlHash = Buffer.from(url).toString('base64').replace(/[/+=]/g, '_');
-    const localPath = path.join(IMAGES_DIR, `${urlHash}.jpg`);
+    console.log(`➡️  Searching eBay for: ${query}`);
+    const listings = await scrapeEbay(query, limit);
+    console.log(`  ↳ Found ${listings.length} listings`);
     
-    // Check if we already have this image cached
-    if (fs.existsSync(localPath)) {
-      const data = fs.readFileSync(localPath);
-      res.set('Content-Type', 'image/jpeg');
-      res.set('Content-Length', data.length);
-      return res.send(data);
-    }
-    
-    // Otherwise fetch the image
-    const response = await axios.get(url, { 
-      responseType: 'arraybuffer',
-      timeout: 15000,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0 Safari/537.36',
-        'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'
-      }
+    res.json({
+      success: true,
+      listings,
+      count: listings.length
     });
-    
-    // Cache the image for future requests
-    fs.writeFileSync(localPath, response.data);
-    
-    // Send the response
-    res.set('Content-Type', response.headers['content-type'] || 'image/jpeg');
-    res.set('Content-Length', response.data.length);
-    res.send(response.data);
-    
-    console.log('[Image Proxy] Success:', url.substring(0, 120) + '...');
   } catch (error) {
-    console.error('[Image Proxy] Error:', error.message);
-    res.status(500).json({ error: 'Failed to proxy image' });
+    console.error('Error in text-search:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      listings: []
+    });
   }
 });
 
-// API routes
-app.use('/api', apiRoutes);
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {

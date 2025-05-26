@@ -169,64 +169,37 @@ async function launchBrowser() {
 }
 
 // Scrape eBay with Firefox
-async function scrapeEbay(query, limit = 60) {
-  const url = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&_sop=13&LH_Sold=1&LH_Complete=1`;
-  console.log(`Scraping eBay for: ${query}`);
-
+export async function scrapeEbay(query, maxItems = 60) {
   const browser = await launchBrowser();
   const page = await browser.newPage();
-
+  
   try {
-    console.log('Navigating to search URL...');
+    const url = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&_sop=13&LH_Sold=1&LH_Complete=1`;
+    console.log('Navigating to:', url);
+    
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     
-    console.log('Extracting listings...');
-    const items = await page.$$eval('.s-item__wrapper', (elements, maxItems) => {
-      const results = [];
-      
-      for (const el of elements) {
-        if (results.length >= maxItems) break;
-
-        const title = el.querySelector('.s-item__title')?.textContent?.replace('New Listing', '').trim();
-        const priceText = el.querySelector('.s-item__price')?.textContent;
-        const price = parseFloat(priceText?.replace(/[^0-9.]/g, '') || '0');
+    const listings = await page.$$eval('.s-item__wrapper', (elements) => {
+      return elements.map(el => {
+        const title = el.querySelector('.s-item__title')?.textContent?.trim() || '';
+        const priceText = el.querySelector('.s-item__price')?.textContent || '';
+        const price = parseFloat(priceText.replace(/[^0-9.]/g, '')) || 0;
+        const imageUrl = el.querySelector('.s-item__image-img')?.getAttribute('src') || '';
+        const itemUrl = el.querySelector('.s-item__link')?.getAttribute('href') || '';
         
-        const imageUrl = el.querySelector('.s-item__image-img')?.getAttribute('src');
-        const itemUrl = el.querySelector('.s-item__link')?.getAttribute('href');
-        
-        // Extract date
-        const dateText = el.querySelector('.s-item__endedDate')?.textContent;
-        const date = dateText ? new Date(dateText.replace('Sold ', '')).toISOString() : new Date().toISOString();
-
-        // Extract shipping
-        const shippingText = el.querySelector('.s-item__shipping')?.textContent;
-        let shipping = 0;
-        if (shippingText && !shippingText.toLowerCase().includes('free')) {
-          const match = shippingText.match(/(\d+\.\d{2})/);
-          if (match) shipping = parseFloat(match[1]);
-        }
-
-        if (title && price && !title.includes('Shop on eBay')) {
-          results.push({
-            title,
-            price,
-            shipping,
-            totalPrice: price + shipping,
-            imageUrl,
-            itemHref: itemUrl,
-            dateSold: date,
-            date: new Date().toISOString(),
-            status: 'sold'
-          });
-        }
-      }
-      return results;
-    }, limit);
-
-    console.log(`Found ${items.length} items`);
-    return items;
+        return {
+          title,
+          price,
+          imageUrl,
+          itemUrl,
+          source: 'eBay'
+        };
+      }).filter(item => item.title && item.price && !item.title.includes('Shop on eBay'));
+    });
+    
+    return listings.slice(0, maxItems);
   } catch (error) {
-    console.error('Scraping error:', error);
+    console.error('Error scraping eBay:', error);
     throw error;
   } finally {
     await browser.close();
