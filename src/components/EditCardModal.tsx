@@ -4,6 +4,7 @@ import { uploadImage } from '../utils/imageUpload';
 import { useAuth } from '@/context/AuthContext';
 import { EmergencyDeleteButton } from './EmergencyDeleteButton';
 import { syncCardWithDisplayCases } from '@/lib/firebase/cards';
+import { syncDisplayCasesForCard, syncAllDisplayCases } from '@/utils/displayCaseUtils';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
@@ -79,20 +80,21 @@ export const EditCardModal = ({ card, isOpen, onClose, onCardUpdated, onCardDele
       
       if (tagsChanged) {
         try {
-          console.log("Syncing updated card with display cases...");
-          const syncResult = await syncCardWithDisplayCases(
-            { ...updatedCard, tags: parsedTags },
-            user.uid
-          );
+          console.log("Syncing display cases for updated card...");
           
-          if (syncResult.syncedCount > 0) {
-            toast.success(`Card was updated in ${syncResult.syncedCount} display case(s) based on tag changes`);
-          }
+          // First sync this specific card with all display cases
+          await syncDisplayCasesForCard(user.uid, card.id);
           
-        } catch (syncError) {
-          console.error("Error syncing card with display cases:", syncError);
-          toast.error("Error syncing card with display cases. Try refreshing the page.");
+          // Then sync all display cases to ensure complete coverage
+          await syncAllDisplayCases(user.uid);
+          
+          toast.success("Card updated and display cases synced");
+        } catch (error) {
+          console.error("Error syncing display cases:", error);
+          toast.error("Card updated but failed to sync display cases");
         }
+      } else {
+        toast.success("Card updated successfully");
       }
       
       // Always invalidate both queries regardless of whether tags changed

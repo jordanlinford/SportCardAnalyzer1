@@ -1,0 +1,3 @@
+[build.environment]
+# Keep only the minimum required environment variables
+NODE_ENV = "production" 

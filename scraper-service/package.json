@@ -9,7 +9,7 @@
   "dependencies": {
     "fastify": "^4.24.0",
     "@fastify/multipart": "^8.0.0",
-    "playwright": "^1.43.0",
+    "@playwright/firefox": "^1.43.0",
     "mime-types": "^2.1.35"
   }
 } 

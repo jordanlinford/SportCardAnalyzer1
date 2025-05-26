@@ -13,6 +13,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Bell } from 'lucide-react';
 import brandLogo from '@/assets/logos/brand-blue.png';
+import DarkModeToggle from './DarkModeToggle';
 import About from '@/pages/About';
 
 export default function Navbar() {
@@ -140,6 +141,7 @@ export default function Navbar() {
         </div>
 
         <div className="hidden md:flex items-center gap-4">
+          <DarkModeToggle />
           {user && (
             <div className="relative">
               <Link to="/dashboard" className="flex items-center gap-1">
@@ -176,6 +178,9 @@ export default function Navbar() {
             <MobileNavLink to="/display-cases" label="Display Cases" active={location.pathname === '/display-cases'} onClick={() => setMobileMenuOpen(false)} />
             <MobileNavLink to="/market-analyzer" label="Market Analyzer" active={location.pathname === '/market-analyzer'} onClick={() => setMobileMenuOpen(false)} />
             <MobileNavLink to="/trade-analyzer" label="Trade Analyzer" active={location.pathname.startsWith('/trade-analyzer')} onClick={() => setMobileMenuOpen(false)} />
+            <div className="flex items-center justify-between">
+              <DarkModeToggle />
+            </div>
             {user && (
               <div className="flex items-center">
                 <MobileNavLink to="/profile" label="Profile" active={location.pathname === '/profile'} onClick={() => setMobileMenuOpen(false)} />

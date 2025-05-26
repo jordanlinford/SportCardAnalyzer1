@@ -1,4 +1,4 @@
-import { firefox } from 'playwright';
+import { firefox } from '@playwright/firefox';
 import { isRealImage, parsePrice, parseDate } from './utils.js';
 
 const SOLD_URL = (q)=>(`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(q)}&_sacat=0&LH_Sold=1&LH_Complete=1&_ipg=240`);
@@ -10,12 +10,7 @@ export async function scrapeText(query, maxItems=120){
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage'
-    ],
-    firefoxUserPrefs: {
-      'media.navigator.streams.fake': true,
-      'browser.cache.disk.enable': false
-    },
-    executablePath: process.env.PLAYWRIGHT_FIREFOX_PATH || '/usr/bin/firefox-esr'
+    ]
   });
   const page = await browser.newPage({ 
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'

@@ -14,6 +14,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { syncDisplayCasesForCard, syncAllDisplayCases } from "@/utils/displayCaseUtils";
+import { addCard as addCardFn } from "@/lib/firebase/cards";
 
 // ✅ Include 'tags' as optional string input
 const cardFormSchema = z.object({
@@ -74,20 +76,40 @@ export function AddCardModal({ isOpen, onClose, onCardAdded }: AddCardModalProps
           : {}),
       };
 
-      await addCard({
-        ...cardToAdd,
-        tags: cardToAdd.tags || []
-      });
+      try {
+        // Add the card directly so we can await the ID
+        const newCardId = await addCardFn({
+          ...cardToAdd,
+          tags: cardToAdd.tags || []
+        });
+        
+        // If the card has tags, manually trigger display case syncing
+        if (cardToAdd.tags && cardToAdd.tags.length > 0) {
+          toast.info("Syncing display cases with the new card...");
+          
+          // For immediate visual feedback, sync all display cases
+          try {
+            await syncDisplayCasesForCard(user.uid, newCardId);
+            await syncAllDisplayCases(user.uid);
+            console.log("Successfully synced all display cases");
+          } catch (syncError) {
+            console.error("Error syncing display cases:", syncError);
+          }
+        }
 
-      reset();
-      onClose();
-      onCardAdded?.();
-      toast.success("Card added successfully");
+        reset();
+        onClose();
+        onCardAdded?.();
+        toast.success("Card added successfully");
+      } catch (error) {
+        console.error("Error adding card:", error);
+        toast.error("Failed to add card");
+      } finally {
+        setIsLoading(false);
+      }
     } catch (error) {
       console.error("Error adding card:", error);
       toast.error("Failed to add card");
-    } finally {
-      setIsLoading(false);
     }
   };
 

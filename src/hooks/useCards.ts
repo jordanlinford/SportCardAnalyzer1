@@ -3,7 +3,7 @@ import { getCards, addCard, deleteCard } from "@/lib/firebase/cards";
 import { Card } from "@/types/Card";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
-import { syncCardToPublicDisplayCases } from "@/utils/displayCaseUtils";
+import { syncCardToPublicDisplayCases, syncDisplayCasesForCard } from "@/utils/displayCaseUtils";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 
@@ -70,9 +70,21 @@ export function useCards() {
         throw new Error("User must be logged in to add cards");
       }
       try {
-        const result = await addCard(card);
-        console.log("useCards: Successfully added card", { result });
-        return result;
+        const cardId = await addCard(card);
+        console.log("useCards: Successfully added card", { cardId });
+        
+        // Sync the new card with all display cases that have matching tags
+        if (card.tags && card.tags.length > 0) {
+          try {
+            console.log("useCards: Syncing new card with display cases");
+            await syncDisplayCasesForCard(user.uid, cardId);
+          } catch (syncError) {
+            console.error("useCards: Error syncing new card with display cases", syncError);
+            // Don't fail the card addition if sync fails
+          }
+        }
+        
+        return cardId;
       } catch (error) {
         console.error("useCards: Error in addCard mutation", { error, card });
         throw error;
@@ -80,6 +92,9 @@ export function useCards() {
     },
     onSuccess: (cardId) => {
       queryClient.invalidateQueries({ queryKey: ["cards", user?.uid] });
+      queryClient.invalidateQueries({ queryKey: ["displayCases", user?.uid] });
+      queryClient.invalidateQueries({ queryKey: ["displayCasesWithCards", user?.uid] });
+      queryClient.invalidateQueries({ queryKey: ["publicDisplayCases"] });
       
       // Display info about display case syncing
       toast.success("Card added successfully! It will appear in any display cases with matching tags.");

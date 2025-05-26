@@ -17,15 +17,22 @@ export async function emergencyDeleteCard(cardId: string, userId: string): Promi
     doc(db, "cards", cardId)
   ];
 
+  let deletedAtLeastOnce = false;
+
   for (const path of possiblePaths) {
     try {
       console.log(`⏳ Attempting to delete from: ${path.path}`);
       await deleteDoc(path);
       console.log(`✅ Successfully deleted from: ${path.path}`);
-      return true;
+      deletedAtLeastOnce = true;
     } catch (err) {
+      // We intentionally continue trying the remaining paths even if a deletion fails
       console.warn(`❌ Failed to delete from: ${path.path}`, err);
     }
+  }
+
+  if (deletedAtLeastOnce) {
+    return true;
   }
 
   console.error("🛑 Card could not be deleted from any known path.");

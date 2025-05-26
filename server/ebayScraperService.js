@@ -74,68 +74,209 @@ function groupVariations(items) {
 }
 
 async function launchBrowser() {
-  try {
-    console.log('Launching Firefox browser...');
-    const options = {
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage'
-      ]
-    };
+  const maxRetries = 3;
+  let retryCount = 0;
+  
+  while (retryCount < maxRetries) {
+    try {
+      console.log(`Launching Firefox browser (attempt ${retryCount + 1}/${maxRetries})...`);
+      const options = {
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-software-rasterizer',
+          '--disable-extensions',
+          '--disable-default-apps',
+          '--disable-popup-blocking',
+          '--disable-notifications',
+          '--window-size=1920,1080'
+        ],
+        firefoxUserPrefs: {
+          'browser.cache.disk.enable': false,
+          'browser.cache.memory.enable': false,
+          'browser.cache.offline.enable': false,
+          'network.http.use-cache': false,
+          'permissions.default.image': 2
+        },
+        viewport: { width: 1920, height: 1080 }
+      };
 
-    // If we're in Docker, use the pre-installed browser
-    if (process.env.PLAYWRIGHT_BROWSERS_PATH) {
-      console.log(`Using browser from ${process.env.PLAYWRIGHT_BROWSERS_PATH}`);
-      options.executablePath = `${process.env.PLAYWRIGHT_BROWSERS_PATH}/firefox-1423/firefox/firefox`;
+      // If we're in Docker, use the pre-installed browser
+      if (process.env.PLAYWRIGHT_BROWSERS_PATH) {
+        console.log(`Using browser from ${process.env.PLAYWRIGHT_BROWSERS_PATH}`);
+        options.executablePath = `${process.env.PLAYWRIGHT_BROWSERS_PATH}/firefox-1423/firefox/firefox`;
+      }
+
+      const browser = await firefox.launch(options);
+      console.log('Browser launched successfully');
+      return browser;
+    } catch (err) {
+      retryCount++;
+      console.error(`Failed to launch browser (attempt ${retryCount}/${maxRetries}):`, err);
+      
+      if (retryCount === maxRetries) {
+        throw new Error(`Failed to launch browser after ${maxRetries} attempts: ${err.message}`);
+      }
+      
+      // Wait before retrying (exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
     }
-
-    const browser = await firefox.launch(options);
-    console.log('Browser launched successfully');
-    return browser;
-  } catch (err) {
-    console.error('Failed to launch browser:', err);
-    throw err;
   }
 }
 
 // Scrape eBay with Firefox
 export async function scrapeEbay(query, maxItems = 60) {
-  const browser = await launchBrowser();
-  const page = await browser.newPage();
+  let browser = null;
+  let context = null;
+  let page = null;
   
   try {
+    browser = await launchBrowser();
+    context = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+      viewport: { width: 1920, height: 1080 },
+      ignoreHTTPSErrors: true
+    });
+    
+    page = await context.newPage();
+    
     const url = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&_sop=13&LH_Sold=1&LH_Complete=1`;
     console.log('Navigating to:', url);
     
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.goto(url, { 
+      waitUntil: 'networkidle',
+      timeout: 60000
+    });
+    
+    await page.waitForSelector('.s-item__wrapper', { timeout: 30000 });
+    await autoScroll(page);
     
     const listings = await page.$$eval('.s-item__wrapper', (elements) => {
       return elements.map(el => {
         const title = el.querySelector('.s-item__title')?.textContent?.trim() || '';
+        if (title.includes('Shop on eBay')) return null;
+        
         const priceText = el.querySelector('.s-item__price')?.textContent || '';
         const price = parseFloat(priceText.replace(/[^0-9.]/g, '')) || 0;
-        const imageUrl = el.querySelector('.s-item__image-img')?.getAttribute('src') || '';
-        const itemUrl = el.querySelector('.s-item__link')?.getAttribute('href') || '';
         
-        return {
+        let imageUrl = '';
+        const imgEl = el.querySelector('.s-item__image-img');
+        if (imgEl) {
+          // Try to get the highest quality image URL
+          const srcset = imgEl.getAttribute('srcset');
+          if (srcset) {
+            // Parse srcset and get the largest image
+            const srcs = srcset.split(',')
+              .map(src => {
+                const [url, width] = src.trim().split(' ');
+                return { url, width: parseInt(width) };
+              })
+              .sort((a, b) => b.width - a.width);
+            if (srcs.length > 0) imageUrl = srcs[0].url;
+          }
+          
+          if (!imageUrl) {
+            imageUrl = imgEl.getAttribute('data-src') || 
+                      imgEl.getAttribute('src') || 
+                      imgEl.getAttribute('data-image-src') || '';
+          }
+          
+          // Remove eBay's image sizing parameters and ensure we get the largest version
+          imageUrl = imageUrl.split('?')[0].replace(/s-l\d+/g, 's-l1600');
+        }
+        
+        const itemUrl = el.querySelector('.s-item__link')?.getAttribute('href') || '';
+        const dateText = el.querySelector('.s-item__endedDate')?.textContent?.trim() || '';
+        
+        return title && price && imageUrl ? {
           title,
           price,
           imageUrl,
           itemUrl,
+          dateSold: dateText,
           source: 'eBay'
-        };
-      }).filter(item => item.title && item.price && !item.title.includes('Shop on eBay'));
+        } : null;
+      }).filter(Boolean);
     });
     
-    return listings.slice(0, maxItems);
+    console.log(`Found ${listings.length} valid listings, caching images...`);
+    
+    // Cache images in parallel with a concurrency limit
+    const processedListings = await Promise.all(
+      listings.slice(0, maxItems).map(async (listing) => {
+        try {
+          // Generate a unique filename based on the listing URL or title
+          const itemId = listing.itemUrl.match(/\/(\d+)\?/) ? 
+                        listing.itemUrl.match(/\/(\d+)\?/)[1] : 
+                        Buffer.from(listing.title).toString('base64').substring(0, 32);
+          
+          const imagePath = path.join(IMAGES_DIR, `${itemId}.jpg`);
+          
+          // Try to cache the image
+          const cached = await cacheImage(imagePath, listing.imageUrl);
+          
+          if (cached) {
+            // Return the local path instead of the eBay URL
+            return {
+              ...listing,
+              imageUrl: `/images/${itemId}.jpg` // This will be served from your local images directory
+            };
+          }
+          
+          return listing; // Keep original URL if caching failed
+        } catch (err) {
+          console.warn(`Failed to cache image for listing: ${listing.title}`, err.message);
+          return listing;
+        }
+      })
+    );
+    
+    console.log(`Successfully processed ${processedListings.length} listings with images`);
+    return processedListings;
+    
   } catch (error) {
     console.error('Error scraping eBay:', error);
+    
+    if (error.message.includes('net::ERR_CONNECTION_TIMED_OUT')) {
+      throw new Error('Connection to eBay timed out. Please try again.');
+    } else if (error.message.includes('net::ERR_CONNECTION_REFUSED')) {
+      throw new Error('Connection to eBay was refused. The service may be temporarily unavailable.');
+    } else if (error.message.includes('Navigation timeout')) {
+      throw new Error('Page load timed out. eBay may be slow or blocking requests.');
+    }
+    
     throw error;
   } finally {
-    await browser.close();
+    if (page) await page.close().catch(console.error);
+    if (context) await context.close().catch(console.error);
+    if (browser) await browser.close().catch(console.error);
   }
+}
+
+// Helper function to scroll and load all items
+async function autoScroll(page) {
+  await page.evaluate(async () => {
+    await new Promise((resolve) => {
+      let totalHeight = 0;
+      const distance = 100;
+      const timer = setInterval(() => {
+        const scrollHeight = document.body.scrollHeight;
+        window.scrollBy(0, distance);
+        totalHeight += distance;
+        
+        if (totalHeight >= scrollHeight) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 100);
+    });
+  });
+  
+  // Wait a bit for any lazy-loaded images
+  await page.waitForTimeout(2000);
 }
 
 export { groupVariations, extractGrade, normalizeTitle, cacheImage }; 

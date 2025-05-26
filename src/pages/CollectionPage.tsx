@@ -21,6 +21,7 @@ const CollectionPage: React.FC = () => {
   const [isUpdatingValues, setIsUpdatingValues] = useState(false);
   const [updatingCardIds, setUpdatingCardIds] = useState<string[]>([]);
   const { user } = useAuth();
+  const csvFileInputRef = React.useRef<HTMLInputElement>(null);
 
   const { data: cards = [], isLoading, error, retryFetchCards } = useCards();
 
@@ -276,6 +277,101 @@ const CollectionPage: React.FC = () => {
     return condition;
   };
 
+  // CSV Export
+  const handleExportCSV = () => {
+    if (cards.length === 0) {
+      toast.info('No cards to export');
+      return;
+    }
+    const headers = [
+      'playerName',
+      'year',
+      'cardSet',
+      'cardNumber',
+      'variation',
+      'condition',
+      'pricePaid',
+      'currentValue',
+      'tags'
+    ];
+    const rows = cards.map(card => headers.map(h => {
+      const val: any = (card as any)[h];
+      if (Array.isArray(val)) return `"${val.join(',')}"`;
+      if (val === undefined || val === null) return '';
+      return typeof val === 'string' ? `"${val.replace(/"/g, '""')}"` : val;
+    }).join(','));
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `collection_${new Date().toISOString()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // CSV Import
+  const handleImportClick = () => {
+    csvFileInputRef.current?.click();
+  };
+
+  const handleCSVFileChange: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!user) {
+      toast.error('You must be logged in to import cards');
+      return;
+    }
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      const header = lines[0].split(',').map(h => h.trim());
+      const requiredCols = ['playerName', 'year', 'cardSet'];
+      for (const col of requiredCols) {
+        if (!header.includes(col)) {
+          toast.error(`Missing required column: ${col}`);
+          return;
+        }
+      }
+      const cardsToCreate: any[] = [];
+      for (let i = 1; i < lines.length; i++) {
+        const row = lines[i];
+        const values = row.match(/\"([^\"]*)\"|[^,]+/g) || []; // basic CSV splitting
+        const record: any = {};
+        header.forEach((h, idx) => {
+          let val = values[idx] || '';
+          if (val.startsWith('"') && val.endsWith('"')) {
+            val = val.slice(1, -1).replace(/""/g, '"');
+          }
+          if (h === 'tags') {
+            record[h] = val ? val.split(',').map((t: string) => t.trim()) : [];
+          } else if (h === 'pricePaid' || h === 'currentValue') {
+            record[h] = val ? parseFloat(val) : undefined;
+          } else {
+            record[h] = val;
+          }
+        });
+        cardsToCreate.push(record);
+      }
+
+      if (cardsToCreate.length === 0) {
+        toast.info('No cards found in CSV');
+        return;
+      }
+      toast.info(`Importing ${cardsToCreate.length} cards...`);
+      await CardService.batchCreateCards(user.uid, cardsToCreate as any);
+      toast.success('Cards imported successfully');
+      retryFetchCards();
+    } catch (err: any) {
+      console.error('CSV import error', err);
+      toast.error(err?.message || 'Failed to import CSV');
+    } finally {
+      e.target.value = '';
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="p-4 text-center">
@@ -318,7 +414,17 @@ const CollectionPage: React.FC = () => {
               "Update All Card Values"
             )}
           </Button>
-        <Button onClick={handleOpenAddCardModal}>+ Add Card</Button>
+          <Button onClick={handleExportCSV} variant="outline">Export CSV</Button>
+          <Button onClick={handleImportClick} variant="outline">Import CSV</Button>
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            ref={csvFileInputRef}
+            onChange={handleCSVFileChange}
+            className="hidden"
+            aria-label="Import CSV file"
+          />
+          <Button onClick={handleOpenAddCardModal}>+ Add Card</Button>
         </div>
       </div>
 

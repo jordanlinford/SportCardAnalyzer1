@@ -2,32 +2,86 @@ import express from 'express';
 import ebayRoutes from './routes/ebay.js';
 import { scrapeEbay } from '../ebayScraperService.js';
 import Stripe from 'stripe';
+import { firefox } from 'playwright';
+import fs from 'fs';
+import path from 'path';
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const router = express.Router();
 
 // Mount routes
 router.use('/ebay', ebayRoutes);
 
+// Images health check endpoint
+router.get('/images-health', (req, res) => {
+  try {
+    const imagesDir = path.join(__dirname, '..', 'images');
+    const stats = {
+      exists: fs.existsSync(imagesDir),
+      writable: false,
+      readable: false,
+      files: [],
+      path: imagesDir
+    };
+    
+    // Check if directory is writable
+    try {
+      fs.accessSync(imagesDir, fs.constants.W_OK);
+      stats.writable = true;
+    } catch (e) {
+      console.warn('Images directory not writable:', e.message);
+    }
+    
+    // Check if directory is readable
+    try {
+      fs.accessSync(imagesDir, fs.constants.R_OK);
+      stats.readable = true;
+      // List first 5 files if readable
+      const files = fs.readdirSync(imagesDir);
+      stats.files = files.slice(0, 5);
+      stats.totalFiles = files.length;
+    } catch (e) {
+      console.warn('Images directory not readable:', e.message);
+    }
+    
+    res.json({
+      status: 'ok',
+      imagesDirectory: stats
+    });
+  } catch (error) {
+    console.error('Error checking images directory:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+});
+
 // Text search endpoint
 router.post('/text-search', async (req, res) => {
   try {
-    const { query, limit, negKeywords, grade } = req.body;
-    const maxResults = limit || 60; // Default to 60 results
-
-    console.log(`➡️  Text search for: ${query}`);
-    const listings = await scrapeEbay(query, maxResults, negKeywords, grade);
-    console.log(`  ↳ Found ${listings.length} sold listings`);
+    const { query, limit = 60 } = req.body;
+    
+    if (!query) {
+      return res.status(400).json({ success: false, message: 'search query required' });
+    }
+    
+    console.log(`➡️  Searching eBay for: ${query}`);
+    const listings = await scrapeEbay(query, limit);
+    console.log(`  ↳ Found ${listings.length} listings`);
     
     res.json({
       success: true,
       listings,
-      message: `Found ${listings.length} sold listings`
+      count: listings.length
     });
   } catch (error) {
-    console.error('Error scraping eBay:', error);
+    console.error('Error in text-search:', error);
     res.status(500).json({
       success: false,
-      message: `Error: ${error.message}`,
+      message: error.message,
       listings: []
     });
   }

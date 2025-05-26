@@ -173,14 +173,21 @@ export default function SimplePublicDisplayCase() {
             if (cardSnap.exists()) {
               return { id: cardSnap.id, ...cardSnap.data() } as Card;
             }
-            
-            // If card not in main collection, try user's collection
+
+            // If card not in main collection, try user's collection paths (collection and cards)
             if (displayCaseData.userId) {
-              const userCardRef = doc(db, "users", displayCaseData.userId, "collection", cardId);
-              const userCardSnap = await getDoc(userCardRef);
-              
-              if (userCardSnap.exists()) {
-                return { id: userCardSnap.id, ...userCardSnap.data() } as Card;
+              // First, try "collection" sub-collection (old path)
+              const userCollectionRef = doc(db, "users", displayCaseData.userId, "collection", cardId);
+              const userCollectionSnap = await getDoc(userCollectionRef);
+              if (userCollectionSnap.exists()) {
+                return { id: userCollectionSnap.id, ...userCollectionSnap.data() } as Card;
+              }
+
+              // Next, try "cards" sub-collection (new path)
+              const userCardsRef = doc(db, "users", displayCaseData.userId, "cards", cardId);
+              const userCardsSnap = await getDoc(userCardsRef);
+              if (userCardsSnap.exists()) {
+                return { id: userCardsSnap.id, ...userCardsSnap.data() } as Card;
               }
             }
             

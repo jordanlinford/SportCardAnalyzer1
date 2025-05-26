@@ -1,0 +1,10 @@
+[build]
+  functions = "netlify/functions"
+  publish = "public"
+  command = "echo 'No build needed for functions-only project'"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = true 

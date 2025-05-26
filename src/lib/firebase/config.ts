@@ -12,58 +12,83 @@ declare global {
   }
 }
 
-// Get configuration from window global if environment variables are not available
-const getConfig = () => {
-  // Try to get from environment variables first
-  const envConfig = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-    appId: import.meta.env.VITE_FIREBASE_APP_ID
-  };
-  
-  // Check if any values are missing
-  const hasMissingValues = Object.values(envConfig).some(val => !val || val.includes('%VITE_'));
-  
-  // If all environment variables are available, use them
-  if (!hasMissingValues) {
-    return envConfig;
-  }
-  
-  // Otherwise, try to use window.firebaseConfig (set in index.html)
-  if (typeof window !== 'undefined' && window.firebaseConfig) {
-    console.log('Using fallback Firebase config from window object');
-    return window.firebaseConfig;
-  }
-  
-  // If still not available, return the env config anyway (will show proper errors)
-  console.warn('Firebase configuration incomplete - auth will not work');
-  return envConfig;
+// Hardcoded fallback Firebase config
+const FALLBACK_CONFIG = {
+  apiKey: "AIzaSyAfb2YtBxD5YEWrNpG0J3GN_g0ZfPzsoOE",
+  authDomain: "sports-card-analyzer.firebaseapp.com",
+  projectId: "sports-card-analyzer",
+  storageBucket: "sports-card-analyzer.appspot.com",
+  messagingSenderId: "27312906394",
+  appId: "1:27312906394:web:11296b8bb530daad5a7f23",
+  measurementId: "G-YNZTKCHQT0"
 };
 
-// Firebase configuration
-const firebaseConfig = getConfig();
+// Get configuration from window global if environment variables are not available
+const getConfig = () => {
+  try {
+    // Try to get from environment variables first
+    const envConfig = {
+      apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+      appId: import.meta.env.VITE_FIREBASE_APP_ID
+    };
+    
+    // Check if any env variables are missing and try to get from window.firebaseConfig
+    const hasAllEnvVars = Object.values(envConfig).every(val => val);
+    
+    if (!hasAllEnvVars && typeof window !== 'undefined' && window.firebaseConfig) {
+      console.log('Using Firebase config from window.firebaseConfig');
+      return window.firebaseConfig;
+    }
+    
+    if (hasAllEnvVars) {
+      console.log('Using Firebase config from environment variables');
+      return envConfig;
+    }
+    
+    // If both methods failed, use fallback config
+    console.warn('Using fallback Firebase config - please check your environment variables');
+    return FALLBACK_CONFIG;
+  } catch (error) {
+    console.error('Error getting Firebase config:', error);
+    return FALLBACK_CONFIG;
+  }
+};
 
-// Print debug info without exposing sensitive data
-console.log("Firebase config:", {
+// Validate that the project ID is correct (not Netlify config table)
+const validateConfig = (config: any) => {
+  if (!config) return FALLBACK_CONFIG;
+  
+  // Check if projectId seems to be a Netlify config table
+  if (typeof config.projectId === 'string' && 
+      (config.projectId.includes('|') || 
+       config.projectId.includes('context') ||
+       config.projectId.includes('VITE_FIREBASE'))) {
+    console.error('Firebase projectId appears to be invalid. Using fallback configuration.');
+    return FALLBACK_CONFIG;
+  }
+  
+  return config;
+};
+
+// Get the Firebase config
+const firebaseConfig = validateConfig(getConfig());
+
+// Get API URL from window or environment variables
+export const API_URL = 
+  (typeof window !== 'undefined' && window.API_URL) ||
+  import.meta.env.VITE_API_URL || 
+  'https://sports-card-api.netlify.app/api/text-search'; // Use our new dedicated API endpoint
+
+// Log the configuration we're using
+console.log('Firebase config:', { 
   projectId: firebaseConfig.projectId,
-  hasApiKey: !!firebaseConfig.apiKey,
-  hasAuthDomain: !!firebaseConfig.authDomain
+  authDomain: firebaseConfig.authDomain,
+  storageBucket: firebaseConfig.storageBucket
 });
-
-// API URL configuration - Get from window.API_URL (set in env.js), environment variables, or fallback to localhost
-export const API_URL = (typeof window !== 'undefined' && window.API_URL) || 
-                      import.meta.env.VITE_API_URL || 
-                      'http://localhost:3001';
-
-// Log API URL for debugging
-console.log("API URL configured as:", API_URL);
-
-// Add a comment explaining deployment requirements
-// NOTE: For production, ensure the API backend is deployed at sports-card-api.vercel.app
-// and properly configured to handle CORS requests from the main app domain
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);

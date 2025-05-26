@@ -1,18 +1,21 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, query, where, getDocs, addDoc, updateDoc, doc } from 'firebase/firestore';
+import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 
 // Initialize Firebase
 const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY,
-  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.FIREBASE_PROJECT_ID,
-  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.FIREBASE_APP_ID
+  apiKey: "AIzaSyAfb2YtBxD5YEWrNpG0J3GN_g0ZfPzsoOE",
+  authDomain: "sports-card-analyzer.firebaseapp.com",
+  projectId: "sports-card-analyzer",
+  storageBucket: "sports-card-analyzer.appspot.com",
+  messagingSenderId: "27312906394",
+  appId: "1:27312906394:web:11296b8bb530daad5a7f23",
+  measurementId: "G-YNZTKCHQT0"
 };
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+export const auth = getAuth(app);
 
 // Helper function to get card data from Firebase
 export async function getCardData(cardId) {
@@ -68,4 +71,30 @@ export async function updateCardData(cardId, updateData) {
   }
 }
 
-export { db }; 
+const provider = new GoogleAuthProvider();
+export async function signInWithGoogle() {
+  const result = await signInWithPopup(auth, provider);
+  return result.user;
+}
+
+export { db };
+
+async function callApiWithAuth(data) {
+  const user = auth.currentUser;
+  if (!user) throw new Error("User not signed in");
+
+  const token = await user.getIdToken();
+  const response = await fetch("https://backend-15mfn77fw-jordan-linfords-projects.vercel.app/api/text-search", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(data)
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status}`);
+  }
+  return response.json();
+} 

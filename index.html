@@ -16,6 +16,15 @@
     <link rel="manifest" href="/manifest.json" crossorigin="use-credentials" />
     <!-- Load environment variables -->
     <script src="/env.js"></script>
+    <!-- Register Service Worker -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .catch(err => console.log('Service worker registration failed', err));
+        });
+      }
+    </script>
     <!-- Firebase Config Fallback -->
     <script>
       window.firebaseConfig = {

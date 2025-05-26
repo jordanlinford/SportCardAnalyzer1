@@ -1,4 +1,4 @@
-import { firefox } from '@playwright/firefox';
+import { firefox } from 'playwright';
 
 async function launchBrowser() {
   try {

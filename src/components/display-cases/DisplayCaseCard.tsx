@@ -102,7 +102,7 @@ export default function DisplayCaseCard({ displayCase }: DisplayCaseCardProps) {
     }
   }, [displayCase]);
 
-  const handleClick = () => {
+  const handleClick = (e: React.MouseEvent) => {
     navigate(`/display-cases/${displayCase.id}`);
   };
 
@@ -157,7 +157,10 @@ export default function DisplayCaseCard({ displayCase }: DisplayCaseCardProps) {
       className="rounded-2xl border p-4 shadow hover:shadow-lg transition cursor-pointer"
       onClick={handleClick}
     >
-      <h3 className="text-lg font-semibold mb-1">{displayCase.name}</h3>
+      <div className="flex justify-between items-start mb-1">
+        <h3 className="text-lg font-semibold">{displayCase.name}</h3>
+        {/* (Sync buttons removed – no longer necessary) */}
+      </div>
       <p className="text-sm text-muted-foreground mb-2">
         Created on {formatDate(displayCase.createdAt)}
       </p>
@@ -232,6 +235,9 @@ export default function DisplayCaseCard({ displayCase }: DisplayCaseCardProps) {
         <span title="Likes">❤️ {displayCase.likes || 0}</span>
         <span title="Comments">💬 {displayCase.comments?.length || 0}</span>
         <span title="Views">👁️ {displayCase.visits || 0}</span>
+        {displayCase.isPublic && (
+          <span title="Public" className="text-green-500">🌎 Public</span>
+        )}
       </div>
     </div>
   );

@@ -35,6 +35,10 @@
   path = "/public/*"
   function = "display-case-og"
 
+[[edge_functions]]
+  path = "/display/*"
+  function = "display-case-og"
+
 [[headers]]
   for = "/*"
   [headers.values]

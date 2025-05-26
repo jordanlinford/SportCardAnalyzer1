@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Page</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background-color: #f5f5f5;
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .container {
+      max-width: 500px;
+      width: 100%;
+      background-color: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    h1 {
+      color: #3b82f6;
+    }
+    button {
+      background-color: #3b82f6;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Sports Card Analyzer - Test Page</h1>
+    <p>If you can see this page, then the HTML rendering is working correctly.</p>
+    <p>The issue is likely with the React application or one of its dependencies.</p>
+    <p id="message"></p>
+    <button id="test-button">Click to Test JavaScript</button>
+  </div>
+
+  <script>
+    // Simple JavaScript to test if JS is working
+    document.getElementById('test-button').addEventListener('click', function() {
+      document.getElementById('message').textContent = 'JavaScript is working! Clicked at: ' + new Date().toLocaleTimeString();
+    });
+    
+    // Log to console
+    console.log('Test page loaded successfully');
+  </script>
+</body>
+</html> 

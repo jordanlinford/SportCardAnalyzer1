@@ -280,45 +280,42 @@ export async function deleteCard(cardId: string, userId: string): Promise<void> 
     let cardData: any = null;
     let wasDeleted = false;
     
-    // First, try to get the card data (we need it for removing from display cases)
+    // Attempt deletion from both potential paths to ensure complete removal
+
+    // Path 1: users/{userId}/collection/{cardId}
     try {
-      // Check the collection path first (our primary location)
       const collectionDocRef = doc(db, "users", userId, "collection", cardId);
       const collectionSnapshot = await getDoc(collectionDocRef);
-      
+
       if (collectionSnapshot.exists()) {
         cardData = collectionSnapshot.data();
         console.log("deleteCard: Found card in collection path:", cardData.playerName);
-        
-        // Delete from collection path
+
         await deleteDoc(collectionDocRef);
         console.log("deleteCard: Deleted card from collection path");
         wasDeleted = true;
       }
     } catch (error) {
-      console.error("deleteCard: Error with collection path:", error);
+      console.error("deleteCard: Error deleting from collection path:", error);
     }
-    
-    // Try the cards path if not found or not deleted from collection
-    if (!wasDeleted) {
-      try {
-        const cardsDocRef = doc(db, "users", userId, "cards", cardId);
-        const cardsSnapshot = await getDoc(cardsDocRef);
-        
-        if (cardsSnapshot.exists()) {
-          if (!cardData) {
-            cardData = cardsSnapshot.data();
-            console.log("deleteCard: Found card in cards path:", cardData.playerName);
-          }
-          
-          // Delete from cards path
-          await deleteDoc(cardsDocRef);
-          console.log("deleteCard: Deleted card from cards path");
-          wasDeleted = true;
+
+    // Path 2: users/{userId}/cards/{cardId}
+    try {
+      const cardsDocRef = doc(db, "users", userId, "cards", cardId);
+      const cardsSnapshot = await getDoc(cardsDocRef);
+
+      if (cardsSnapshot.exists()) {
+        if (!cardData) {
+          cardData = cardsSnapshot.data();
+          console.log("deleteCard: Found card in cards path:", cardData.playerName);
         }
-      } catch (error) {
-        console.error("deleteCard: Error with cards path:", error);
+
+        await deleteDoc(cardsDocRef);
+        console.log("deleteCard: Deleted card from cards path");
+        wasDeleted = true;
       }
+    } catch (error) {
+      console.error("deleteCard: Error deleting from cards path:", error);
     }
     
     if (!wasDeleted) {

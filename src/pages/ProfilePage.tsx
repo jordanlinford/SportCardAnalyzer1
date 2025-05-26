@@ -91,6 +91,13 @@ export default function ProfilePage() {
 
       setProfilePicFile(null);
       toast.success('Profile picture updated successfully');
+
+      // Persist the photoURL in Firestore so other devices can see it
+      try {
+        await updateDoc(doc(db, 'users', user.uid), { photoURL: downloadURL });
+      } catch (firestoreError) {
+        console.warn('Profile picture saved to auth but failed to update Firestore:', firestoreError);
+      }
     } catch (error: any) {
       console.error('Error updating profile picture:', error);
       toast.error(error.message || 'Failed to update profile picture');
