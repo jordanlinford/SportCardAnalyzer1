@@ -82,7 +82,6 @@ async function launchBrowser() {
       console.log(`Launching Firefox browser (attempt ${retryCount + 1}/${maxRetries})...`);
       console.log('Environment:', {
         NODE_ENV: process.env.NODE_ENV,
-        FIREFOX_PATH: process.env.FIREFOX_PATH,
         DISPLAY: process.env.DISPLAY
       });
 
@@ -110,22 +109,21 @@ async function launchBrowser() {
         viewport: { width: 1920, height: 1080 }
       };
 
-      // If we're in Docker, use the pre-installed browser
+      // If we're in Docker, use the system Firefox
       if (process.env.NODE_ENV === 'production') {
         console.log('Running in production, using system Firefox');
-        if (!process.env.FIREFOX_PATH) {
-          throw new Error('FIREFOX_PATH environment variable not set');
-        }
-        options.executablePath = process.env.FIREFOX_PATH;
-        console.log('Using Firefox at:', process.env.FIREFOX_PATH);
-
+        options.executablePath = '/usr/bin/firefox-esr';
+        
         // Verify Firefox exists
         try {
           const { execSync } = require('child_process');
-          const output = execSync(`${process.env.FIREFOX_PATH} --version`).toString();
-          console.log('Firefox version check:', output.trim());
+          const versionOutput = execSync('firefox-esr --version').toString();
+          const locationOutput = execSync('which firefox-esr').toString();
+          console.log('Firefox version:', versionOutput.trim());
+          console.log('Firefox location:', locationOutput.trim());
+          console.log('Firefox binary check:', execSync('ls -l /usr/bin/firefox*').toString());
         } catch (err) {
-          console.error('Failed to check Firefox version:', err.message);
+          console.error('Failed to check Firefox:', err.message);
         }
       }
 
