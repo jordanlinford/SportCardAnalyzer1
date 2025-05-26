@@ -1,5 +1,28 @@
-import axios from 'axios';
-import * as cheerio from 'cheerio';
+import { firefox } from 'playwright';
+
+async function launchBrowser() {
+  try {
+    console.log('Launching Firefox browser...');
+    const browser = await firefox.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage'
+      ],
+      firefoxUserPrefs: {
+        'media.navigator.streams.fake': true,
+        'browser.cache.disk.enable': false
+      },
+      executablePath: process.env.PLAYWRIGHT_FIREFOX_PATH || '/usr/bin/firefox-esr'
+    });
+    console.log('Browser launched successfully');
+    return browser;
+  } catch (err) {
+    console.error('Failed to launch browser:', err);
+    throw err;
+  }
+}
 
 /**
  * Fetches the primary image (and any variation images) from an eBay listing page.
@@ -8,58 +31,24 @@ import * as cheerio from 'cheerio';
  * @returns {Promise<{ mainImage: string|null, variations: string[] }>}
  */
 export async function fetchEbayImages(listingUrl) {
-  if (!listingUrl || typeof listingUrl !== 'string') {
-    throw new Error('listingUrl must be a non-empty string');
-  }
-
+  const browser = await launchBrowser();
+  const page = await browser.newPage();
+  
   try {
-    const { data: html } = await axios.get(listingUrl, {
-      headers: {
-        // Pretend to be a normal browser to avoid bot blocks
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
-      },
-      timeout: 15000,
+    await page.goto(listingUrl, { waitUntil: 'networkidle', timeout: 30000 });
+    
+    const images = await page.$$eval('img.s-item__image-img', (imgs) => {
+      return imgs.map(img => {
+        const src = img.getAttribute('src') || img.getAttribute('data-src');
+        return src ? src.split('?')[0] : null;
+      }).filter(Boolean);
     });
-
-    const $ = cheerio.load(html);
-
-    // 1. Primary image
-    let mainImage = $('img#icImg').attr('src');
-    if (!mainImage) {
-      mainImage = $('meta[property="og:image"]').attr('content') || null;
-    }
-
-    // 2. Variation images – look for PictureURL arrays inside <script> tags
-    const variations = new Set();
-
-    $('script').each((_, el) => {
-      const scriptText = $(el).html() || '';
-      if (!scriptText.includes('PictureURL')) return;
-
-      // Common pattern:  "PictureURL":"https://...jpg" or "PictureURLLarge":"https://..."
-      const regex = /"PictureURL(?:Large|FullSize)?"\s*:\s*"(https?:[^"\s]+)"/g;
-      let match;
-      while ((match = regex.exec(scriptText)) !== null) {
-        variations.add(match[1]);
-      }
-
-      // Alternate key name sometimes used by eBay: pictureURL (lower-case p)
-      const regex2 = /\bpictureURL"?\s*:\s*"(https?:[^"\s]+)"/g;
-      while ((match = regex2.exec(scriptText)) !== null) {
-        variations.add(match[1]);
-      }
-    });
-
-    // Remove duplicate of mainImage if present
-    if (mainImage) variations.delete(mainImage);
-
-    return {
-      mainImage: mainImage || null,
-      variations: Array.from(variations),
-    };
-  } catch (err) {
-    console.error('fetchEbayImages error:', err.message || err);
-    throw err;
+    
+    return images;
+  } catch (error) {
+    console.error('Error fetching eBay images:', error);
+    return [];
+  } finally {
+    await browser.close();
   }
 } 
