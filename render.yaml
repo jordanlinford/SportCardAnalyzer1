@@ -3,6 +3,7 @@ services:
     name: sports-card-analyzer-api
     env: docker
     dockerfilePath: ./Dockerfile
+    port: 3000
     envVars:
       - key: NODE_ENV
         value: production
@@ -10,6 +11,8 @@ services:
         value: /ms-playwright
       - key: DISPLAY
         value: ":99"
+      - key: PORT
+        value: "3000"
       - key: FIREBASE_PROJECT_ID
         sync: false
       - key: FIREBASE_PRIVATE_KEY
