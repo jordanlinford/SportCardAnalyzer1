@@ -33,6 +33,7 @@ async function launchBrowser() {
   };
 
   if (isProduction) {
+    options.executablePath = process.env.PLAYWRIGHT_FIREFOX_PATH || '/usr/bin/firefox-esr';
     options.args = [
       '--no-sandbox',
       '--disable-setuid-sandbox',

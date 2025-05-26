@@ -6,9 +6,9 @@ services:
     branch: main
     rootDir: server
     buildCommand: |
+      apt-get update && apt-get install -y firefox-esr
       npm install
       npx playwright install-deps
-      npx playwright install firefox
     startCommand: node server/server.js
     plan: free
     autoDeploy: true
@@ -17,6 +17,8 @@ services:
         value: production
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: /opt/render/project/src/.playwright
+      - key: PLAYWRIGHT_FIREFOX_PATH
+        value: /usr/bin/firefox-esr
       - key: FIREBASE_PROJECT_ID
         sync: false
       - key: FIREBASE_PRIVATE_KEY
