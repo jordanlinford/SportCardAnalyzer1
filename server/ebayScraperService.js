@@ -144,19 +144,22 @@ async function fetchOgImage(browser, itemUrl) {
 async function launchBrowser() {
   try {
     console.log('Launching Firefox browser...');
-    const browser = await firefox.launch({
+    const options = {
       headless: true,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage'
-      ],
-      firefoxUserPrefs: {
-        'media.navigator.streams.fake': true,
-        'browser.cache.disk.enable': false
-      },
-      executablePath: process.env.PLAYWRIGHT_FIREFOX_PATH || '/usr/bin/firefox-esr'
-    });
+      ]
+    };
+
+    // If we're in Docker, use the pre-installed browser
+    if (process.env.PLAYWRIGHT_BROWSERS_PATH) {
+      console.log(`Using browser from ${process.env.PLAYWRIGHT_BROWSERS_PATH}`);
+      options.executablePath = `${process.env.PLAYWRIGHT_BROWSERS_PATH}/firefox-1423/firefox/firefox`;
+    }
+
+    const browser = await firefox.launch(options);
     console.log('Browser launched successfully');
     return browser;
   } catch (err) {
