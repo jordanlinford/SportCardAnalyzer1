@@ -14,6 +14,7 @@ import multer from 'multer';
 import admin from 'firebase-admin';
 import vision from '@google-cloud/vision';
 import Stripe from 'stripe';
+import apiRoutes from './api/index.js';
 
 // Global error handler for uncaught exceptions
 process.on('uncaughtException', (error) => {
@@ -99,6 +100,10 @@ try {
   });
   console.log('Root path handler configured');
 
+  // Mount API routes
+  app.use('/api', apiRoutes);
+  console.log('API routes mounted');
+
   // Health check endpoint
   app.get('/api/health', (req, res) => {
     console.log('Received health check request');
@@ -162,37 +167,6 @@ try {
   // Multer setup for file uploads
   const upload = multer({ storage: multer.memoryStorage() });
   console.log('File upload middleware configured');
-
-  // API Routes
-  app.post('/api/text-search', async (req, res) => {
-    try {
-      console.log('Received text search request:', req.body);
-      const { query, limit = 60 } = req.body;
-      
-      if (!query) {
-        console.warn('Missing search query');
-        return res.status(400).json({ success: false, message: 'search query required' });
-      }
-      
-      console.log(`➡️  Searching eBay for: ${query}`);
-      const listings = await scrapeEbay(query, limit);
-      console.log(`  ↳ Found ${listings.length} listings`);
-      
-      res.json({
-        success: true,
-        listings,
-        count: listings.length
-      });
-    } catch (error) {
-      console.error('Error in text-search:', error);
-      res.status(500).json({
-        success: false,
-        message: error.message,
-        listings: []
-      });
-    }
-  });
-  console.log('API routes configured');
 
   // Error handling middleware
   app.use((err, req, res, next) => {
