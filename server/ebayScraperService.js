@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
 import NodeCache from 'node-cache';
+import chromium from 'chrome-aws-lambda';
 import puppeteer from 'puppeteer-core';
 import { fetchEbayImages } from './ebayImageScraper.js';
 import { dirname } from 'path';
@@ -123,21 +124,29 @@ async function fetchOgImage(browser, itemUrl) {
   return og || '';
 }
 
+async function launchBrowser() {
+  try {
+    console.log('Launching browser with chrome-aws-lambda...');
+    const browser = await puppeteer.launch({
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath,
+      headless: chromium.headless,
+      ignoreHTTPSErrors: true,
+    });
+    console.log('Browser launched successfully');
+    return browser;
+  } catch (err) {
+    console.error('Failed to launch browser:', err);
+    throw err;
+  }
+}
+
 // Core: scrape by text query
 async function scrapeEbay(query, limit = 120) {
   // Helper to scrape a single URL and return items (used twice)
   async function fetchPage(searchUrl, statusTag = 'sold') {
-    const browser = await puppeteer.launch({ 
-      headless: "new",
-      executablePath: process.env.CHROME_BIN || '/usr/bin/chromium',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--single-process'
-      ]
-    });
+    const browser = await launchBrowser();
     const page = await browser.newPage();
     
     // Use a more modern user agent
@@ -309,17 +318,7 @@ async function scrapeEbay(query, limit = 120) {
   console.log(`  ↳ Enriching ${items.length} listings with full-size images…`);
 
   // Launch a lightweight headless browser for image enrichment
-  const browser = await puppeteer.launch({ 
-    headless: "new",
-    executablePath: process.env.CHROME_BIN || '/usr/bin/chromium',
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--single-process'
-    ]
-  });
+  const browser = await launchBrowser();
   try {
     await ensureImages(items, browser);
   } catch (err) {
@@ -394,7 +393,7 @@ async function ensureImages(items, browser) {
 
 // Core: scrape by image upload
 async function scrapeEbayByImage(imagePath, limit = 20) {
-  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
+  const browser = await launchBrowser();
   const page = await browser.newPage();
   
   try {
