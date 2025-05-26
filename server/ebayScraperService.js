@@ -7,14 +7,12 @@ import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
 import NodeCache from 'node-cache';
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import puppeteer from 'puppeteer-core';
 import { fetchEbayImages } from './ebayImageScraper.js';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
 
-puppeteer.use(StealthPlugin());
 const app = express();
 const cache = new NodeCache({ stdTTL: 600, checkperiod: 120 }); // 10min caching
 
@@ -130,8 +128,15 @@ async function scrapeEbay(query, limit = 120) {
   // Helper to scrape a single URL and return items (used twice)
   async function fetchPage(searchUrl, statusTag = 'sold') {
     const browser = await puppeteer.launch({ 
-      headless: "new", // Use new headless mode
-      args: ['--no-sandbox', '--disable-setuid-sandbox'] 
+      headless: "new",
+      executablePath: process.env.CHROME_BIN || '/usr/bin/chromium',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--single-process'
+      ]
     });
     const page = await browser.newPage();
     
@@ -304,7 +309,17 @@ async function scrapeEbay(query, limit = 120) {
   console.log(`  ↳ Enriching ${items.length} listings with full-size images…`);
 
   // Launch a lightweight headless browser for image enrichment
-  const browser = await puppeteer.launch({ headless: "new", args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  const browser = await puppeteer.launch({ 
+    headless: "new",
+    executablePath: process.env.CHROME_BIN || '/usr/bin/chromium',
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--single-process'
+    ]
+  });
   try {
     await ensureImages(items, browser);
   } catch (err) {

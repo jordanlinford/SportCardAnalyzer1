@@ -24,9 +24,8 @@
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
     "node-cache": "^5.1.2",
+    "node-fetch": "^3.3.2",
     "puppeteer-core": "^21.11.0",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "stripe": "^14.25.0"
   },
   "devDependencies": {
