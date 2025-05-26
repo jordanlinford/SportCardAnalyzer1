@@ -6,10 +6,12 @@ services:
     branch: main
     rootDir: server
     buildCommand: |
-      apt-get update && apt-get install -y firefox-esr
+      apt-get update
+      apt-get install -y firefox-esr xvfb
       npm install
-      npx playwright install-deps
-    startCommand: node server/server.js
+      PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/.playwright npx playwright install firefox
+      PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/.playwright npx playwright install-deps
+    startCommand: xvfb-run --auto-servernum -- node server/server.js
     plan: free
     autoDeploy: true
     envVars:
@@ -19,6 +21,8 @@ services:
         value: /opt/render/project/src/.playwright
       - key: PLAYWRIGHT_FIREFOX_PATH
         value: /usr/bin/firefox-esr
+      - key: DISPLAY
+        value: ":99.0"
       - key: FIREBASE_PROJECT_ID
         sync: false
       - key: FIREBASE_PRIVATE_KEY

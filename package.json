@@ -10,7 +10,8 @@
     "dev:client": "vite --port 5135 --strictPort",
     "dev:server": "nodemon server/server.js",
     "build": "vite build && node scripts/generate-env.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "postinstall": "npx playwright install firefox && npx playwright install-deps"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.0.1",
