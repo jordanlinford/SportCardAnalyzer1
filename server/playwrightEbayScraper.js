@@ -27,25 +27,30 @@ const isRealImage = (url) => {
 };
 
 async function launchBrowser() {
-  const isProduction = process.env.NODE_ENV === 'production';
-  const options = {
-    headless: true
-  };
-
-  if (isProduction) {
-    options.executablePath = process.env.PLAYWRIGHT_FIREFOX_PATH || '/usr/bin/firefox-esr';
-    options.args = [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage'
-    ];
-    options.firefoxUserPrefs = {
-      'media.navigator.streams.fake': true,
-      'browser.cache.disk.enable': false
+  try {
+    console.log('Launching browser...');
+    const options = {
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage'
+      ]
     };
-  }
 
-  return await firefox.launch(options);
+    // If we're in Docker, use the pre-installed browser
+    if (process.env.PLAYWRIGHT_BROWSERS_PATH) {
+      console.log(`Using browser from ${process.env.PLAYWRIGHT_BROWSERS_PATH}`);
+      options.executablePath = `${process.env.PLAYWRIGHT_BROWSERS_PATH}/firefox-1423/firefox/firefox`;
+    }
+
+    const browser = await firefox.launch(options);
+    console.log('Browser launched successfully');
+    return browser;
+  } catch (err) {
+    console.error('Failed to launch browser:', err);
+    throw err;
+  }
 }
 
 export async function scrapeByText(query, maxItems = 60) {
