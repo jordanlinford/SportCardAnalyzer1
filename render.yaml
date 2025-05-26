@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: sports-card-analyzer-api
+    name: SportCardAnalyzer1
     env: docker
     dockerfilePath: ./Dockerfile
     plan: starter
