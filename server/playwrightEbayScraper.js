@@ -26,51 +26,74 @@ const isRealImage = (url) => {
   );
 };
 
+async function launchBrowser() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const options = {
+    headless: true
+  };
+
+  if (isProduction) {
+    options.args = [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--disable-gpu',
+      '--single-process'
+    ];
+  }
+
+  return await chromium.launch(options);
+}
+
 export async function scrapeByText(query, maxItems = 60) {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser();
   const context = await browser.newContext({ userAgent: randomUserAgent() });
   const page = await context.newPage();
 
   try {
     await page.goto(SOLD_URL(query), { waitUntil: 'networkidle', timeout: DEFAULT_TIMEOUT });
-    // scroll to load more images
     await autoScroll(page);
 
-    const listings = await page.$$eval('.s-item', (elements, max, isRealImageFn) => {
+    const listings = await page.$$eval('.s-item', (elements, max) => {
       const parsePrice = (txt) => parseFloat(txt.replace(/[^0-9.]/g, ''));
-      const parseDate = (txt) => {
-        // eBay usually shows like "Apr 15, 2024" inside span.POSITIVE
-        const m = txt.match(/(\w{3} \d{1,2}, \d{4})/);
-        return m ? m[1] : null;
-      };
       const results = [];
+      
       for (const el of elements) {
         if (results.length >= max) break;
+        
         const titleEl = el.querySelector('.s-item__title');
         const priceEl = el.querySelector('.s-item__price');
         const imageEl = el.querySelector('img.s-item__image-img');
         const linkEl = el.querySelector('a.s-item__link');
+        
         if (!titleEl || !priceEl || !imageEl || !linkEl) continue;
-        const img = imageEl.getAttribute('src') || imageEl.getAttribute('data-src');
-        if (!isRealImageFn(img)) continue;
+        
+        const title = titleEl.textContent.trim();
+        if (title.includes('Shop on eBay')) continue;
+        
         const price = parsePrice(priceEl.textContent || '');
         if (!price) continue;
-        const dateEl = el.querySelector('.s-item__endedDate, .s-item__listingDate, .s-item__title--tagblock');
-        const date = dateEl ? parseDate(dateEl.textContent || '') : null;
+        
+        const img = imageEl.getAttribute('src') || imageEl.getAttribute('data-src');
+        if (!img || img.includes('s-l64') || img.includes('s-l96')) continue;
+        
         results.push({
-          title: titleEl.textContent.trim(),
+          title,
           price,
           shipping: 0,
           totalPrice: price,
-          date: date || new Date().toISOString().split('T')[0],
-          dateSold: date || new Date().toISOString().split('T')[0],
+          date: new Date().toISOString(),
+          dateSold: new Date().toISOString().split('T')[0],
           imageUrl: img.split('?')[0],
           url: linkEl.href,
-          source: 'eBay',
+          source: 'eBay'
         });
       }
       return results;
-    }, maxItems, isRealImage.toString());
+    }, maxItems);
 
     return listings;
   } finally {
