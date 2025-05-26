@@ -20,7 +20,7 @@ import Stripe from 'stripe';
 import NodeCache from 'node-cache';
 import { fetchEbayImages } from './ebayImageScraper.js';
 import morgan from 'morgan';
-import { firefox } from 'playwright';
+import { firefox } from '@playwright/firefox';
 
 // Load .env in this directory, regardless of where node was started
 dotenv.config({ path: path.join(__dirname, '.env') });
