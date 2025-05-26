@@ -1,19 +1,10 @@
 services:
-  - type: worker
+  - type: web
     name: sports-card-analyzer-api
     env: docker
     dockerfilePath: ./Dockerfile
-    dockerCommand: /app/start.sh
     plan: starter
     region: ohio
-    branch: main
-    autoDeploy: true
-    buildFilter:
-      paths:
-      - server/**
-      - Dockerfile
-      - package.json
-      - package-lock.json
     envVars:
       - key: NODE_ENV
         value: production
