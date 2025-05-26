@@ -2,8 +2,16 @@ services:
   - type: web
     name: sports-card-analyzer-api
     env: node
-    buildCommand: npm install && npx playwright install firefox && npx playwright install-deps
-    startCommand: node server/server.js
+    buildCommand: |
+      apt-get update && \
+      apt-get install -y firefox-esr xvfb && \
+      npm install && \
+      npx playwright install firefox && \
+      npx playwright install-deps
+    startCommand: |
+      Xvfb :99 -screen 0 1024x768x16 &
+      sleep 1
+      node server/server.js
     plan: starter
     region: ohio
     branch: main
