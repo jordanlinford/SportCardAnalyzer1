@@ -1,20 +1,23 @@
-FROM ghcr.io/puppeteer/puppeteer:latest
+FROM mcr.microsoft.com/playwright:v1.43.0-jammy
 
 # Set working directory
 WORKDIR /app
 
 # Copy package files
-COPY server/package*.json ./
+COPY package*.json ./
 
 # Install dependencies
-RUN npm install --omit=dev
+RUN npm install
 
-# Copy server files
-COPY server .
+# Copy the rest of the application
+COPY . .
 
 # Set environment variables
 ENV NODE_ENV=production
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Start the server
-CMD ["node", "server.js"]
+# Expose the port the app runs on
+EXPOSE 3000
+
+# Start the application
+CMD ["node", "server/server.js"]
