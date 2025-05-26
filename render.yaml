@@ -6,9 +6,10 @@ services:
     branch: main
     rootDir: server
     buildCommand: |
-      npm install --omit=dev
+      npm install
+      npx playwright install-deps
       npx playwright install chromium
-      npx playwright install-deps chromium
+      npx playwright install
     startCommand: node server/server.js
     plan: free
     autoDeploy: true
@@ -16,7 +17,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: PLAYWRIGHT_BROWSERS_PATH
-        value: /opt/render/project/src/node_modules/playwright-core/.local-browsers
+        value: /opt/render/project/src/.playwright
       - key: FIREBASE_PROJECT_ID
         sync: false
       - key: FIREBASE_PRIVATE_KEY
@@ -26,4 +27,4 @@ services:
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: FRONTEND_URL
-        value: https://<your-site>.netlify.app 
+        value: https://sports-card-analyzer.netlify.app 
