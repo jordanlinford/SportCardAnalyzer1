@@ -8,6 +8,12 @@ services:
     branch: main
     healthCheckPath: /
     port: 10000
+    buildCommand: |
+      apt-get update
+      apt-get install -y firefox-esr xvfb
+      npm install
+      npx playwright install firefox
+      npx playwright install-deps firefox
     envVars:
       - key: NODE_ENV
         value: production
@@ -15,6 +21,14 @@ services:
         value: ":99"
       - key: PORT
         value: "10000"
+      - key: FIREFOX_BINARY
+        value: "/usr/bin/firefox-esr"
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: "/ms-playwright"
+      - key: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
+        value: "1"
+      - key: DEBIAN_FRONTEND
+        value: "noninteractive"
       - key: FIREBASE_PROJECT_ID
         sync: false
       - key: FIREBASE_PRIVATE_KEY
