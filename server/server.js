@@ -69,29 +69,57 @@ app.get('/', (req, res) => {
   });
 });
 
-// Initialize Firebase Admin
-const serviceAccount = JSON.parse(
-  fs.readFileSync(path.join(__dirname, '../credentials/service-account.json'), 'utf8')
-);
-console.log('Using service account:', serviceAccount.client_email);
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok' });
 });
-console.log('Firebase Admin initialized successfully');
 
-// Initialize Vision API
-if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-  const credsPath = path.join(__dirname, '../credentials/service-account.json');
-  if (fs.existsSync(credsPath)) {
-    process.env.GOOGLE_APPLICATION_CREDENTIALS = credsPath;
-    console.log('GOOGLE_APPLICATION_CREDENTIALS set to', credsPath);
+// Initialize Firebase Admin (if credentials are available)
+try {
+  const credentialsPath = path.join(__dirname, '../credentials/service-account.json');
+  if (fs.existsSync(credentialsPath)) {
+    const serviceAccount = JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+    console.log('Firebase Admin initialized successfully');
+  } else {
+    console.log('Firebase credentials not found, skipping initialization');
   }
+} catch (error) {
+  console.warn('Failed to initialize Firebase:', error.message);
 }
-const visionClient = new vision.ImageAnnotatorClient();
-console.log('Google Vision client initialized');
 
-// Initialize Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' });
+// Initialize Vision API (if credentials are available)
+let visionClient;
+try {
+  if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    const credsPath = path.join(__dirname, '../credentials/service-account.json');
+    if (fs.existsSync(credsPath)) {
+      process.env.GOOGLE_APPLICATION_CREDENTIALS = credsPath;
+      console.log('GOOGLE_APPLICATION_CREDENTIALS set to', credsPath);
+      visionClient = new vision.ImageAnnotatorClient();
+      console.log('Google Vision client initialized');
+    } else {
+      console.log('Vision API credentials not found, skipping initialization');
+    }
+  }
+} catch (error) {
+  console.warn('Failed to initialize Vision API:', error.message);
+}
+
+// Initialize Stripe (if key is available)
+let stripe;
+try {
+  if (process.env.STRIPE_SECRET_KEY) {
+    stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' });
+    console.log('Stripe initialized successfully');
+  } else {
+    console.log('Stripe secret key not found, skipping initialization');
+  }
+} catch (error) {
+  console.warn('Failed to initialize Stripe:', error.message);
+}
 
 // Multer setup for file uploads
 const upload = multer({ storage: multer.memoryStorage() });
@@ -122,11 +150,6 @@ app.post('/api/text-search', async (req, res) => {
       listings: []
     });
   }
-});
-
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
 });
 
 // Error handling middleware
