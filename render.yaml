@@ -3,16 +3,13 @@ services:
     name: sports-card-analyzer-api
     env: docker
     dockerfilePath: ./Dockerfile
-    buildCommand: |
-      npm install
-      npx playwright install firefox
-      npx playwright install-deps
-    startCommand: node server/server.js
     envVars:
       - key: NODE_ENV
         value: production
       - key: PLAYWRIGHT_BROWSERS_PATH
-        value: /opt/render/project/src/.playwright
+        value: /ms-playwright
+      - key: DISPLAY
+        value: ":99"
       - key: FIREBASE_PROJECT_ID
         sync: false
       - key: FIREBASE_PRIVATE_KEY

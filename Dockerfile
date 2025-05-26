@@ -8,7 +8,7 @@ COPY package*.json ./
 
 # Install dependencies and browsers
 RUN npm install && \
-    npx playwright install && \
+    npx playwright install firefox && \
     npx playwright install-deps
 
 # Copy the rest of the application
@@ -21,7 +21,7 @@ ENV DISPLAY=:99
 
 # Install xvfb
 RUN apt-get update && \
-    apt-get install -y xvfb && \
+    apt-get install -y xvfb firefox-esr && \
     rm -rf /var/lib/apt/lists/*
 
 # Create a script to start Xvfb and the application
