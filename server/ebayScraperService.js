@@ -80,6 +80,12 @@ async function launchBrowser() {
   while (retryCount < maxRetries) {
     try {
       console.log(`Launching Firefox browser (attempt ${retryCount + 1}/${maxRetries})...`);
+      console.log('Environment:', {
+        NODE_ENV: process.env.NODE_ENV,
+        FIREFOX_PATH: process.env.FIREFOX_PATH,
+        DISPLAY: process.env.DISPLAY
+      });
+
       const options = {
         headless: true,
         args: [
@@ -112,6 +118,15 @@ async function launchBrowser() {
         }
         options.executablePath = process.env.FIREFOX_PATH;
         console.log('Using Firefox at:', process.env.FIREFOX_PATH);
+
+        // Verify Firefox exists
+        try {
+          const { execSync } = require('child_process');
+          const output = execSync(`${process.env.FIREFOX_PATH} --version`).toString();
+          console.log('Firefox version check:', output.trim());
+        } catch (err) {
+          console.error('Failed to check Firefox version:', err.message);
+        }
       }
 
       const browser = await firefox.launch(options);

@@ -4,7 +4,10 @@ FROM mcr.microsoft.com/playwright:v1.43.0-jammy
 RUN apt-get update && \
     apt-get install -y firefox-esr xvfb && \
     rm -rf /var/lib/apt/lists/* && \
-    which firefox-esr > /firefox-path.txt
+    echo "Firefox version:" && \
+    firefox-esr --version && \
+    echo "Firefox location:" && \
+    whereis firefox-esr
 
 # Set working directory
 WORKDIR /app
@@ -27,14 +30,15 @@ RUN mkdir -p /app/server/images /app/credentials
 ENV NODE_ENV=production
 ENV DISPLAY=:99
 ENV PORT=10000
+ENV FIREFOX_PATH=/usr/bin/firefox-esr
 
-# Get Firefox path and create start script
-RUN FIREFOX_PATH=$(cat /firefox-path.txt) && \
-    echo '#!/bin/bash\n\
+# Create start script
+RUN echo '#!/bin/bash\n\
+echo "Checking Firefox installation..."\n\
+firefox-esr --version\n\
+echo "Firefox binary location: $FIREFOX_PATH"\n\
 Xvfb :99 -screen 0 1024x768x16 &\n\
 sleep 1\n\
-export FIREFOX_PATH='$FIREFOX_PATH'\n\
-echo "Firefox path: $FIREFOX_PATH"\n\
 exec node server/server.js' > /app/start.sh && \
     chmod +x /app/start.sh
 
