@@ -80,56 +80,15 @@ async function launchBrowser() {
   while (retryCount < maxRetries) {
     try {
       console.log(`Launching Firefox browser (attempt ${retryCount + 1}/${maxRetries})...`);
-      console.log('Environment:', {
-        NODE_ENV: process.env.NODE_ENV,
-        DISPLAY: process.env.DISPLAY,
-        FIREFOX_BINARY: process.env.FIREFOX_BINARY,
-        PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH
-      });
-
+      
       const options = {
         headless: true,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-software-rasterizer',
-          '--disable-extensions',
-          '--disable-default-apps',
-          '--disable-popup-blocking',
-          '--disable-notifications',
-          '--window-size=1920,1080'
-        ],
-        firefoxUserPrefs: {
-          'browser.cache.disk.enable': false,
-          'browser.cache.memory.enable': false,
-          'browser.cache.offline.enable': false,
-          'network.http.use-cache': false,
-          'permissions.default.image': 2
-        },
-        viewport: { width: 1920, height: 1080 }
+          '--disable-dev-shm-usage'
+        ]
       };
-
-      // If we're in Docker, use the system Firefox
-      if (process.env.NODE_ENV === 'production') {
-        console.log('Running in production, using system Firefox');
-        const firefoxPath = process.env.FIREFOX_BINARY || '/usr/bin/firefox-esr';
-        options.executablePath = firefoxPath;
-        
-        // Verify Firefox exists
-        try {
-          const { execSync } = require('child_process');
-          const versionOutput = execSync(`${firefoxPath} --version`).toString();
-          const locationOutput = execSync(`which ${firefoxPath}`).toString();
-          console.log('Firefox version:', versionOutput.trim());
-          console.log('Firefox location:', locationOutput.trim());
-          console.log('Firefox binary check:', execSync('ls -l $(which firefox-esr)').toString());
-          console.log('Playwright browsers:', execSync('ls -la ' + (process.env.PLAYWRIGHT_BROWSERS_PATH || '/ms-playwright')).toString());
-        } catch (err) {
-          console.error('Failed to check Firefox:', err.message);
-        }
-      }
 
       const browser = await firefox.launch(options);
       console.log('Browser launched successfully');

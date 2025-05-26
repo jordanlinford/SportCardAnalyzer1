@@ -16,14 +16,6 @@ services:
         value: ":99"
       - key: PORT
         value: "10000"
-      - key: FIREFOX_BINARY
-        value: "/usr/bin/firefox-esr"
-      - key: PLAYWRIGHT_BROWSERS_PATH
-        value: "/ms-playwright"
-      - key: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
-        value: "1"
-      - key: DEBIAN_FRONTEND
-        value: "noninteractive"
       - key: FIREBASE_PROJECT_ID
         sync: false
       - key: FIREBASE_PRIVATE_KEY
