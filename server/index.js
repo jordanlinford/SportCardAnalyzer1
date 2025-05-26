@@ -17,15 +17,11 @@ import { scrapeEbay } from './ebayScraperService.js';
 import multer from 'multer';
 import axios from 'axios';
 import Stripe from 'stripe';
-import puppeteer from 'puppeteer';
 import NodeCache from 'node-cache';
 import { fetchEbayImages } from './ebayImageScraper.js';
 import morgan from 'morgan';
-import firefox from 'puppeteer-firefox';
-const cors = require('cors');
-app.use(cors({
-  origin: '*'  // This allows all origins for now
-}));
+import { firefox } from 'playwright';
+
 // Load .env in this directory, regardless of where node was started
 dotenv.config({ path: path.join(__dirname, '.env') });
 
