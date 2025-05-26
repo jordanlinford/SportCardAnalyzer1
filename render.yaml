@@ -1,5 +1,5 @@
 services:
-  - type: web
+  - type: private-service
     name: sports-card-analyzer-api
     env: docker
     dockerfilePath: ./Dockerfile
