@@ -165,65 +165,68 @@ async function launchBrowser() {
   }
 }
 
-// Scrape eBay without Puppeteer
+// Scrape eBay with Firefox
 async function scrapeEbay(query, limit = 60) {
   const url = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&_sop=13&LH_Sold=1&LH_Complete=1`;
   console.log(`Scraping eBay for: ${query}`);
 
+  const browser = await launchBrowser();
+  const page = await browser.newPage();
+
   try {
-    const { data } = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
-      }
-    });
-
-    const $ = cheerio.load(data);
-    const items = [];
-
-    $('.s-item__wrapper').each((i, el) => {
-      if (items.length >= limit) return false;
-
-      const $item = $(el);
-      const title = $item.find('.s-item__title').text().replace('New Listing', '').trim();
-      const priceText = $item.find('.s-item__price').text();
-      const price = parseFloat(priceText.replace(/[^0-9.]/g, ''));
+    console.log('Navigating to search URL...');
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    
+    console.log('Extracting listings...');
+    const items = await page.$$eval('.s-item__wrapper', (elements, maxItems) => {
+      const results = [];
       
-      const imageUrl = $item.find('.s-item__image-img').attr('src');
-      const itemUrl = $item.find('.s-item__link').attr('href');
-      
-      // Extract date
-      const dateText = $item.find('.s-item__endedDate').text();
-      const date = dateText ? new Date(dateText.replace('Sold ', '')).toISOString() : new Date().toISOString();
+      for (const el of elements) {
+        if (results.length >= maxItems) break;
 
-      // Extract shipping
-      const shippingText = $item.find('.s-item__shipping').text();
-      let shipping = 0;
-      if (shippingText && !shippingText.toLowerCase().includes('free')) {
-        const match = shippingText.match(/(\d+\.\d{2})/);
-        if (match) shipping = parseFloat(match[1]);
-      }
+        const title = el.querySelector('.s-item__title')?.textContent?.replace('New Listing', '').trim();
+        const priceText = el.querySelector('.s-item__price')?.textContent;
+        const price = parseFloat(priceText?.replace(/[^0-9.]/g, '') || '0');
+        
+        const imageUrl = el.querySelector('.s-item__image-img')?.getAttribute('src');
+        const itemUrl = el.querySelector('.s-item__link')?.getAttribute('href');
+        
+        // Extract date
+        const dateText = el.querySelector('.s-item__endedDate')?.textContent;
+        const date = dateText ? new Date(dateText.replace('Sold ', '')).toISOString() : new Date().toISOString();
 
-      if (title && price && !title.includes('Shop on eBay')) {
-        items.push({
-          title,
-          price,
-          shipping,
-          totalPrice: price + shipping,
-          imageUrl,
-          itemHref: itemUrl,
-          dateSold: date,
-          date: new Date().toISOString(),
-          status: 'sold'
-        });
+        // Extract shipping
+        const shippingText = el.querySelector('.s-item__shipping')?.textContent;
+        let shipping = 0;
+        if (shippingText && !shippingText.toLowerCase().includes('free')) {
+          const match = shippingText.match(/(\d+\.\d{2})/);
+          if (match) shipping = parseFloat(match[1]);
+        }
+
+        if (title && price && !title.includes('Shop on eBay')) {
+          results.push({
+            title,
+            price,
+            shipping,
+            totalPrice: price + shipping,
+            imageUrl,
+            itemHref: itemUrl,
+            dateSold: date,
+            date: new Date().toISOString(),
+            status: 'sold'
+          });
+        }
       }
-    });
+      return results;
+    }, limit);
 
     console.log(`Found ${items.length} items`);
     return items;
   } catch (error) {
     console.error('Scraping error:', error);
     throw error;
+  } finally {
+    await browser.close();
   }
 }
 
