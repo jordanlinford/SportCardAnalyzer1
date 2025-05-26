@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: sports-card-analyzer-api
+    env: node
+    repo: https://github.com/<YOUR_GITHUB>/<YOUR_REPO>.git
+    branch: main
+    rootDir: server
+    buildCommand: |
+      npm install --omit=dev
+      npx playwright install chromium
+      npx playwright install-deps chromium
+    startCommand: node server/server.js
+    plan: free
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /opt/render/project/src/node_modules/playwright-core/.local-browsers
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: FRONTEND_URL
+        value: https://<your-site>.netlify.app 
