@@ -1,3 +1,19 @@
+# Build stage
+FROM mcr.microsoft.com/playwright:v1.43.0-jammy AS builder
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy the rest of the application
+COPY . .
+
+# Final stage
 FROM mcr.microsoft.com/playwright:v1.43.0-jammy
 
 # Install Firefox and Xvfb
@@ -8,15 +24,11 @@ RUN apt-get update && \
 # Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy built application from builder stage
+COPY --from=builder /app .
 
-# Install dependencies and Firefox
-RUN npm install && \
-    npx playwright install firefox
-
-# Copy the rest of the application
-COPY . .
+# Install Firefox browser
+RUN npx playwright install firefox
 
 # Create necessary directories
 RUN mkdir -p /app/server/images /app/credentials
@@ -28,10 +40,10 @@ ENV PORT=3000
 
 # Create start script
 RUN echo '#!/bin/bash\n\
-echo "Starting Xvfb..."\n\
+echo "[$(date)] Starting Xvfb..."\n\
 Xvfb :99 -screen 0 1024x768x16 &\n\
 sleep 1\n\
-echo "Starting Node.js application..."\n\
+echo "[$(date)] Starting Node.js application..."\n\
 exec node server/server.js' > /app/start.sh && \
     chmod +x /app/start.sh
 
