@@ -3,13 +3,13 @@ services:
     name: sports-card-analyzer-api
     env: node
     buildCommand: |
-      apt-get update && \
-      apt-get install -y firefox-esr xvfb && \
+      sudo apt-get update && \
+      sudo apt-get install -y firefox-esr xvfb libgtk-3-0 libasound2 libx11-xcb1 libxss1 libnss3 && \
       npm install && \
       npx playwright install firefox && \
       npx playwright install-deps
     startCommand: |
-      Xvfb :99 -screen 0 1024x768x16 &
+      sudo Xvfb :99 -screen 0 1024x768x16 &
       sleep 1
       node server/server.js
     plan: starter
