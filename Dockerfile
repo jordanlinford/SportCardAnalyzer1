@@ -11,21 +11,21 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Set working directory
-WORKDIR /app
+WORKDIR /app/server
 
-# Copy package files
-COPY package*.json ./
+# Copy server package files
+COPY server/package*.json ./
 
 # Install dependencies
 RUN npm install && \
     npx playwright install firefox
 
-# Copy the rest of the application
-COPY . .
+# Copy the server application
+COPY server .
 
 # Create necessary directories
-RUN mkdir -p /app/server/images /app/credentials && \
-    chmod -R 777 /app/server/images
+RUN mkdir -p images credentials && \
+    chmod -R 777 images
 
 # Create start script
 RUN echo '#!/bin/bash\n\
@@ -33,12 +33,11 @@ echo "Starting Xvfb..."\n\
 Xvfb :99 -screen 0 1024x768x16 &\n\
 sleep 2\n\
 echo "Starting Node.js application..."\n\
-cd /app/server\n\
-exec node server.js' > /app/start.sh && \
-    chmod +x /app/start.sh
+exec node server.js' > start.sh && \
+    chmod +x start.sh
 
 # Expose the port
 EXPOSE 10000
 
 # Start the application
-ENTRYPOINT ["/app/start.sh"]
+ENTRYPOINT ["./start.sh"]

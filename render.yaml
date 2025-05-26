@@ -8,7 +8,8 @@ services:
     branch: main
     healthCheckPath: /
     port: 10000
-    startCommand: /app/start.sh
+    startCommand: ./start.sh
+    rootDir: server
     envVars:
       - key: NODE_ENV
         value: production
