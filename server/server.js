@@ -6,7 +6,7 @@ import fs from 'fs';
 import axios from 'axios';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { firefox } from '@playwright/firefox';
+import { firefox } from 'playwright';
 import { scrapeEbay } from './ebayScraperService.js';
 import { fetchEbayImages } from './ebayImageScraper.js';
 import NodeCache from 'node-cache';

@@ -13,7 +13,7 @@
   "license": "ISC",
   "dependencies": {
     "@google-cloud/vision": "^5.1.0",
-    "@playwright/firefox": "^1.43.0",
+    "playwright": "^1.43.0",
     "axios": "^1.9.0",
     "body-parser": "^1.20.2",
     "cheerio": "^1.0.0",

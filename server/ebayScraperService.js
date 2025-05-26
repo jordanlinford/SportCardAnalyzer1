@@ -5,11 +5,12 @@ import dotenv from 'dotenv'; dotenv.config();
 import fs from 'fs';
 import path from 'path';
 import NodeCache from 'node-cache';
-import { firefox } from '@playwright/firefox';
+import { firefox } from 'playwright';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const cache = new NodeCache({ stdTTL: 600 }); // 10 min cache
 
 // ---------------------------------------------------------------------------
@@ -17,7 +18,6 @@ const cache = new NodeCache({ stdTTL: 600 }); // 10 min cache
 //  and then serve it from /images/<itemId>.jpg so the front-end never has to
 //  talk to eBay. This bypasses hot-link blocking and guarantees availability.
 // ---------------------------------------------------------------------------
-const __dirname = dirname(fileURLToPath(import.meta.url));
 const IMAGES_DIR = path.join(__dirname, 'images');
 if (!fs.existsSync(IMAGES_DIR)) {
   fs.mkdirSync(IMAGES_DIR, { recursive: true });
@@ -129,13 +129,7 @@ export async function scrapeEbay(query, maxItems = 60) {
       }).filter(item => item.title && item.price && !item.title.includes('Shop on eBay'));
     });
     
-    // Add grade information and group variations
-    const enhancedListings = listings.slice(0, maxItems).map(listing => ({
-      ...listing,
-      grade: extractGrade(listing.title)
-    }));
-    
-    return enhancedListings;
+    return listings.slice(0, maxItems);
   } catch (error) {
     console.error('Error scraping eBay:', error);
     throw error;
