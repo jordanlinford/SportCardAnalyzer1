@@ -15,7 +15,18 @@ import admin from 'firebase-admin';
 import vision from '@google-cloud/vision';
 import Stripe from 'stripe';
 
-// Wrap the entire server initialization in a try-catch
+// Global error handler for uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  console.error('Stack trace:', error.stack);
+});
+
+// Global error handler for unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Promise Rejection:', reason);
+  console.error('Promise:', promise);
+});
+
 try {
   console.log('Starting server initialization...');
   console.log(`Node.js version: ${process.version}`);
@@ -76,18 +87,21 @@ try {
 
   // Root path handler
   app.get('/', (req, res) => {
+    console.log('Received request at root path');
     res.json({
       status: 'ok',
       message: 'Sports Card Analyzer API is running',
       version: '1.0.0',
       environment: process.env.NODE_ENV,
-      nodeVersion: process.version
+      nodeVersion: process.version,
+      uptime: process.uptime()
     });
   });
   console.log('Root path handler configured');
 
   // Health check endpoint
   app.get('/api/health', (req, res) => {
+    console.log('Received health check request');
     res.json({ 
       status: 'ok',
       uptime: process.uptime(),
@@ -152,9 +166,11 @@ try {
   // API Routes
   app.post('/api/text-search', async (req, res) => {
     try {
+      console.log('Received text search request:', req.body);
       const { query, limit = 60 } = req.body;
       
       if (!query) {
+        console.warn('Missing search query');
         return res.status(400).json({ success: false, message: 'search query required' });
       }
       
@@ -230,5 +246,6 @@ try {
 
 } catch (error) {
   console.error('Fatal error during server initialization:', error);
+  console.error('Stack trace:', error.stack);
   process.exit(1);
 } 
