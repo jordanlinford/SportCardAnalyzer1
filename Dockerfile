@@ -3,6 +3,11 @@ FROM mcr.microsoft.com/playwright:v1.43.0-jammy
 # Set working directory
 WORKDIR /app
 
+# Install xvfb and Firefox
+RUN apt-get update && \
+    apt-get install -y xvfb firefox-esr && \
+    rm -rf /var/lib/apt/lists/*
+
 # Copy package files
 COPY package*.json ./
 
@@ -14,36 +19,26 @@ RUN npm install && \
 # Copy the rest of the application
 COPY . .
 
-# Create necessary directories with proper permissions
-RUN mkdir -p /app/server/images && \
-    mkdir -p /app/credentials && \
-    chown -R node:node /app
+# Create necessary directories
+RUN mkdir -p /app/server/images /app/credentials
 
 # Set environment variables
 ENV NODE_ENV=production
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV DISPLAY=:99
+ENV PORT=3000
 
-# Install xvfb and Firefox
-RUN apt-get update && \
-    apt-get install -y xvfb firefox-esr && \
-    rm -rf /var/lib/apt/lists/*
-
-# Create a script to start Xvfb and the application
+# Create start script
 RUN echo '#!/bin/bash\n\
 echo "Starting Xvfb..."\n\
 Xvfb :99 -screen 0 1024x768x16 &\n\
 sleep 1\n\
 echo "Starting Node.js application..."\n\
-cd /app && node server/server.js 2>&1 | tee /app/server.log' > /app/start.sh && \
-    chmod +x /app/start.sh && \
-    chown node:node /app/start.sh
+exec node server/server.js' > /app/start.sh && \
+    chmod +x /app/start.sh
 
-# Switch to non-root user
-USER node
-
-# Expose the port the app runs on
+# Expose the port
 EXPOSE 3000
 
-# Start the application with Xvfb
+# Start the application
 CMD ["/app/start.sh"]
