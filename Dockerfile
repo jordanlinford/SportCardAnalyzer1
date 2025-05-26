@@ -11,9 +11,10 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
+# Install dependencies and ensure Firefox is installed
 RUN npm install && \
-    npx playwright install firefox
+    npx playwright install firefox && \
+    npx playwright install-deps firefox
 
 # Copy the rest of the application
 COPY . .
@@ -25,6 +26,7 @@ RUN mkdir -p /app/server/images /app/credentials
 ENV NODE_ENV=production
 ENV DISPLAY=:99
 ENV PORT=10000
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 # Create start script
 RUN echo '#!/bin/bash\n\
