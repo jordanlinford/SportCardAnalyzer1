@@ -8,12 +8,6 @@ services:
     branch: main
     healthCheckPath: /
     port: 10000
-    buildCommand: |
-      apt-get update
-      apt-get install -y firefox-esr xvfb
-      npm install
-      npx playwright install firefox
-      npx playwright install-deps firefox
     envVars:
       - key: NODE_ENV
         value: production

@@ -1,13 +1,13 @@
 FROM mcr.microsoft.com/playwright:v1.43.0-jammy
 
 # Set environment variables
-ENV NODE_ENV=production
-ENV DISPLAY=:99
-ENV PORT=10000
-ENV FIREFOX_BINARY=/usr/bin/firefox-esr
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-ENV DEBIAN_FRONTEND=noninteractive
+ENV NODE_ENV=production \
+    DISPLAY=:99 \
+    PORT=10000 \
+    FIREFOX_BINARY=/usr/bin/firefox-esr \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    DEBIAN_FRONTEND=noninteractive
 
 # Install Firefox and Xvfb
 RUN apt-get update && \
@@ -26,25 +26,36 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies and ensure Firefox is installed
-RUN npm install && \
+RUN npm install --no-optional && \
     npx playwright install firefox && \
-    npx playwright install-deps firefox
+    npx playwright install-deps firefox && \
+    echo "Verifying Playwright installation:" && \
+    ls -la $PLAYWRIGHT_BROWSERS_PATH
 
 # Copy the rest of the application
 COPY . .
 
-# Create necessary directories
-RUN mkdir -p /app/server/images /app/credentials
+# Create necessary directories and set permissions
+RUN mkdir -p /app/server/images /app/credentials && \
+    chmod -R 777 /app/server/images
 
-# Verify Firefox installation
+# Verify Firefox installation and permissions
 RUN echo "Verifying Firefox installation..." && \
     firefox-esr --version && \
     which firefox-esr && \
     ls -l $(which firefox-esr) && \
-    ls -la $PLAYWRIGHT_BROWSERS_PATH
+    ls -la $PLAYWRIGHT_BROWSERS_PATH && \
+    echo "Checking Firefox permissions:" && \
+    ls -l /usr/bin/firefox* && \
+    ls -l /usr/local/bin/firefox* && \
+    echo "Checking Xvfb:" && \
+    which Xvfb && \
+    ls -l $(which Xvfb)
 
-# Create start script
+# Create start script with additional checks
 RUN echo '#!/bin/bash\n\
+echo "Environment:"\n\
+env | grep -E "DISPLAY|FIREFOX|PLAYWRIGHT"\n\
 echo "Starting with Firefox:"\n\
 $FIREFOX_BINARY --version\n\
 echo "Firefox binary locations:"\n\
@@ -52,8 +63,12 @@ which $FIREFOX_BINARY\n\
 ls -l $(which $FIREFOX_BINARY)\n\
 echo "Playwright browsers:"\n\
 ls -la $PLAYWRIGHT_BROWSERS_PATH\n\
+echo "Starting Xvfb..."\n\
 Xvfb :99 -screen 0 1024x768x16 &\n\
-sleep 1\n\
+sleep 2\n\
+echo "Checking if Xvfb is running:"\n\
+ps aux | grep Xvfb\n\
+echo "Starting Node.js application..."\n\
 exec node server/server.js' > /app/start.sh && \
     chmod +x /app/start.sh
 
