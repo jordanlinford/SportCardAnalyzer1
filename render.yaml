@@ -1,21 +1,22 @@
 services:
   - type: web
     name: sports-card-analyzer-api
-    env: node
-    buildCommand: |
-      sudo apt-get update && \
-      sudo apt-get install -y firefox-esr xvfb libgtk-3-0 libasound2 libx11-xcb1 libxss1 libnss3 && \
-      npm install && \
-      npx playwright install firefox && \
-      npx playwright install-deps
-    startCommand: |
-      sudo Xvfb :99 -screen 0 1024x768x16 &
-      sleep 1
-      node server/server.js
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: /app/start.sh
     plan: starter
     region: ohio
     branch: main
     healthCheckPath: /
+    scaling:
+      minInstances: 1
+      maxInstances: 1
+    buildFilter:
+      paths:
+      - server/**
+      - Dockerfile
+      - package.json
+      - package-lock.json
     envVars:
       - key: NODE_ENV
         value: production
