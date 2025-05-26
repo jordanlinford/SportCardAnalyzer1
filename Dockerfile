@@ -25,7 +25,12 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Create a script to start Xvfb and the application
-RUN echo '#!/bin/bash\nXvfb :99 -screen 0 1024x768x16 &\nsleep 1\nnode server/server.js' > /app/start.sh && \
+RUN echo '#!/bin/bash\n\
+echo "Starting Xvfb..."\n\
+Xvfb :99 -screen 0 1024x768x16 &\n\
+sleep 1\n\
+echo "Starting Node.js application..."\n\
+node server/server.js 2>&1 | tee /app/server.log' > /app/start.sh && \
     chmod +x /app/start.sh
 
 # Expose the port the app runs on
