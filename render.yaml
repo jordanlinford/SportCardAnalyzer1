@@ -1,18 +1,16 @@
 services:
   - type: web
     name: sports-card-analyzer-api
-    env: docker
-    dockerfilePath: ./Dockerfile
+    env: node
+    buildCommand: npm install && npx playwright install firefox && npx playwright install-deps
+    startCommand: node server/server.js
     plan: starter
     region: ohio
     branch: main
     healthCheckPath: /
-    port: 3000
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PLAYWRIGHT_BROWSERS_PATH
-        value: /ms-playwright
       - key: DISPLAY
         value: ":99"
       - key: PORT
