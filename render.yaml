@@ -1,5 +1,5 @@
 services:
-  - type: private-service
+  - type: worker
     name: sports-card-analyzer-api
     env: docker
     dockerfilePath: ./Dockerfile
@@ -7,10 +7,7 @@ services:
     plan: starter
     region: ohio
     branch: main
-    healthCheckPath: /
-    scaling:
-      minInstances: 1
-      maxInstances: 1
+    autoDeploy: true
     buildFilter:
       paths:
       - server/**
