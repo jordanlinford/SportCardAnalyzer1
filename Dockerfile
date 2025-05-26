@@ -54,26 +54,27 @@ RUN echo "Verifying Firefox installation..." && \
 
 # Create start script with additional checks
 RUN echo '#!/bin/bash\n\
-echo "Environment:"\n\
+set -e\n\
+echo "=== Environment Information ==="\n\
 env | grep -E "DISPLAY|FIREFOX|PLAYWRIGHT"\n\
-echo "Starting with Firefox:"\n\
+echo "\n=== Firefox Information ==="\n\
 $FIREFOX_BINARY --version\n\
-echo "Firefox binary locations:"\n\
-which $FIREFOX_BINARY\n\
+echo "Binary location: $(which $FIREFOX_BINARY)"\n\
 ls -l $(which $FIREFOX_BINARY)\n\
-echo "Playwright browsers:"\n\
+echo "\n=== Playwright Information ==="\n\
 ls -la $PLAYWRIGHT_BROWSERS_PATH\n\
-echo "Starting Xvfb..."\n\
+echo "\n=== Starting Xvfb ==="\n\
 Xvfb :99 -screen 0 1024x768x16 &\n\
 sleep 2\n\
-echo "Checking if Xvfb is running:"\n\
+echo "Xvfb process:"\n\
 ps aux | grep Xvfb\n\
-echo "Starting Node.js application..."\n\
-exec node server/server.js' > /app/start.sh && \
+echo "\n=== Starting Node.js Application ==="\n\
+cd /app/server\n\
+exec node server.js' > /app/start.sh && \
     chmod +x /app/start.sh
 
 # Expose the port
 EXPOSE 10000
 
-# Start the application
-CMD ["/app/start.sh"]
+# Make the start script the default command
+ENTRYPOINT ["/app/start.sh"]
