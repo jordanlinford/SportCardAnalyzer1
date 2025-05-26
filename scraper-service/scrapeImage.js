@@ -1,10 +1,22 @@
-import { chromium } from 'playwright';
+import { firefox } from 'playwright';
 import { isRealImage, parsePrice } from './utils.js';
 
 export async function scrapeImage(localPath, maxItems=60){
-  const browser=await chromium.launch({headless:true});
-  const page=await browser.newPage();
-  try{
+  const browser = await firefox.launch({
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage'
+    ],
+    firefoxUserPrefs: {
+      'media.navigator.streams.fake': true,
+      'browser.cache.disk.enable': false
+    },
+    executablePath: process.env.PLAYWRIGHT_FIREFOX_PATH || '/usr/bin/firefox-esr'
+  });
+  const page = await browser.newPage();
+  try {
     await page.goto('https://www.ebay.com/sl/img', {
       waitUntil: 'domcontentloaded',
       timeout: 60000

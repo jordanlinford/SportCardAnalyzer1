@@ -7,18 +7,35 @@ import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
 import NodeCache from 'node-cache';
-import chromium from 'chrome-aws-lambda';
-import puppeteer from 'puppeteer-core';
+import { firefox } from 'playwright';
 import { fetchEbayImages } from './ebayImageScraper.js';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
+import cors from 'cors';
+import cheerio from 'cheerio';
 
 const app = express();
-const cache = new NodeCache({ stdTTL: 600, checkperiod: 120 }); // 10min caching
+const cache = new NodeCache({ stdTTL: 600 }); // 10 min cache
 
 // Multer setup for image uploads
 const tmpUpload = multer({ dest: 'uploads/' });
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    const allowedPatterns = [
+      /^https?:\/\/localhost(:\d+)?$/,
+      /netlify\.app$/,
+      /sportscardanalyzer\.com$/
+    ];
+    if (allowedPatterns.some(re => re.test(origin))) {
+      return callback(null, true);
+    }
+    callback(new Error(`CORS blocked for origin ${origin}`));
+  },
+  credentials: true
+}));
 
 app.use(express.json());
 
@@ -126,13 +143,19 @@ async function fetchOgImage(browser, itemUrl) {
 
 async function launchBrowser() {
   try {
-    console.log('Launching browser with chrome-aws-lambda...');
-    const browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath,
-      headless: chromium.headless,
-      ignoreHTTPSErrors: true,
+    console.log('Launching Firefox browser...');
+    const browser = await firefox.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage'
+      ],
+      firefoxUserPrefs: {
+        'media.navigator.streams.fake': true,
+        'browser.cache.disk.enable': false
+      },
+      executablePath: process.env.PLAYWRIGHT_FIREFOX_PATH || '/usr/bin/firefox-esr'
     });
     console.log('Browser launched successfully');
     return browser;
@@ -142,349 +165,105 @@ async function launchBrowser() {
   }
 }
 
-// Core: scrape by text query
-async function scrapeEbay(query, limit = 120) {
-  // Helper to scrape a single URL and return items (used twice)
-  async function fetchPage(searchUrl, statusTag = 'sold') {
-    const browser = await launchBrowser();
-    const page = await browser.newPage();
-    
-    // Use a more modern user agent
-    await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36');
-    
-    // Add viewport settings
-    await page.setViewport({ width: 1280, height: 800 });
+// Scrape eBay without Puppeteer
+async function scrapeEbay(query, limit = 60) {
+  const url = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&_sop=13&LH_Sold=1&LH_Complete=1`;
+  console.log(`Scraping eBay for: ${query}`);
 
-    // DEBUG: see where Puppeteer is going
-    console.log('➡️  navigating to', searchUrl);
-
-    try {
-      await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-      
-      // Wait for listing items to load
-      await page.waitForSelector('.srp-results .s-item__pl-on-bottom', { timeout: 10000 })
-        .catch(() => console.log('Warning: Timing out waiting for listings'));
-      
-      // Scroll to trigger lazy loading
-      await page.evaluate(async () => {
-        await new Promise(res => {
-          let total = 0;
-          const step = 600;
-          const timer = setInterval(() => {
-            window.scrollBy(0, step);
-            total += step;
-            if (total > 5000) { // Scroll more for modern pages
-              clearInterval(timer);
-              res();
-            }
-          }, 200);
-        });
-      });
-
-      await page.waitForTimeout(1500);
-
-      // Try multiple selectors based on eBay's different listing formats
-      const results = await page.evaluate((lim, tag) => {
-        // Try various eBay listing selectors - they change frequently
-        const selectors = [
-          '.srp-results .s-item__pl-on-bottom', // Modern layout
-          '.srp-results .s-item',              // Alternative layout
-          '.b-list__items .s-item',           // Old layout
-          '[data-view="mi:1686|iid:1"]'        // Very new layout
-        ];
-        
-        let items = [];
-        
-        // Try each selector until we find listings
-        for (const selector of selectors) {
-          const elements = document.querySelectorAll(selector);
-          if (elements && elements.length > 0) {
-            items = Array.from(elements).slice(0, lim).map(el => {
-              // Extract title with fallbacks
-              const titleEl = el.querySelector('.s-item__title') || 
-                             el.querySelector('[role="heading"]') ||
-                             el.querySelector('h3');
-              const title = titleEl?.innerText?.replace('New Listing', '').trim();
-              
-              // Extract price with fallbacks
-              const priceEl = el.querySelector('.s-item__price') || 
-                             el.querySelector('.x-price') ||
-                             el.querySelector('[data-testid="price"]');
-              const priceText = priceEl?.innerText || '';
-              const price = parseFloat(priceText.replace(/[^0-9\.]/g, '')) || null;
-              
-              // Extract image with multiple fallbacks
-              const imgEl = el.querySelector('.s-item__image-img') || 
-                           el.querySelector('.image img') ||
-                           el.querySelector('[data-testid="itemImage"] img');
-              
-              let image = '';
-              if (imgEl) {
-                // Try multiple attributes where image might be
-                image = imgEl.getAttribute('src') || 
-                        imgEl.getAttribute('data-src') || 
-                        imgEl.getAttribute('srcset')?.split(' ')[0] || '';
-              }
-              
-              // Fix protocol-relative URLs
-              if (image && image.startsWith('//')) image = 'https:' + image;
-              
-              // Skip placeholder/transparent images
-              if (image && (image.includes('trans_1x1') || image.endsWith('.gif'))) {
-                image = imgEl?.getAttribute('data-src') || '';
-              }
-              
-              // Extract link with fallbacks
-              const linkEl = el.querySelector('.s-item__link') || 
-                            el.querySelector('a[href*="itm/"]') ||
-                            el.querySelector('[data-testid="itemCard"] a');
-              const href = linkEl?.href;
-              
-              // Extract ID from URL
-              const idMatch = href?.match(/\/(\d+)(?:\?|$)/);
-              const itemId = idMatch?.[1] || null;
-              
-              // Extract sold date if available
-              const dateEl = el.querySelector('.s-item__endedDate, .s-item__sold-date') ||
-                           el.querySelector('[data-testid="itemEndDate"]');
-              const dateText = dateEl?.innerText || '';
-              // Current date fallback
-              const now = new Date().toISOString().split('T')[0];
-              const soldDate = dateText.replace(/Sold\s+|Ended\s+/i, '').trim() || now;
-              
-              // Extract shipping if available
-              const shippingEl = el.querySelector('.s-item__shipping, .s-item__freeXDays') ||
-                               el.querySelector('[data-testid="itemShipping"]');
-              const shippingText = shippingEl?.innerText || '';
-              // Extract shipping cost or 0 for free shipping
-              let shipping = 0;
-              if (shippingText && !shippingText.toLowerCase().includes('free')) {
-                const shippingMatch = shippingText.match(/(\d+\.\d+)/);
-                if (shippingMatch) shipping = parseFloat(shippingMatch[1]);
-              }
-              
-              return { 
-                itemId, 
-                title, 
-                price, 
-                shipping,
-                totalPrice: price + shipping,
-                imageUrl: image, 
-                itemHref: href, 
-                dateSold: soldDate,
-                date: now,
-                status: tag 
-              };
-            });
-            // If we found items with this selector, break the loop
-            break;
-          }
-        }
-        
-        // Filter out invalid items
-        return items.filter(item => item.title && item.price && item.itemId);
-        
-      }, limit, statusTag);
-
-      await browser.close();
-      return results || [];
-    } catch (error) {
-      console.error(`Error scraping ${searchUrl}:`, error);
-      await browser.close();
-      return [];
-    }
-  }
-
-  const soldUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}&_sop=13&LH_Sold=1&LH_Complete=1`;
-  let items = await fetchPage(soldUrl, 'sold');
-  console.log(`  ↳ Found ${items.length} sold listings`);
-
-  // Fallback to active listings if too few sold comps
-  if (items.length < 5) {
-    console.log('  ↳ Not enough sold listings, adding active listings...');
-    const activeUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(query)}`;
-    const active = await fetchPage(activeUrl, 'active');
-    console.log(`  ↳ Found ${active.length} active listings`);
-    items = items.concat(active);
-  }
-
-  // Basic clean-up
-  items = items.filter(itm => {
-    if (!itm.title) return false;
-    if (/SHOP ON EBAY|Shop on eBay/i.test(itm.title)) return false;
-    return true;
-  });
-
-  console.log(`  ↳ Enriching ${items.length} listings with full-size images…`);
-
-  // Launch a lightweight headless browser for image enrichment
-  const browser = await launchBrowser();
   try {
-    await ensureImages(items, browser);
-  } catch (err) {
-    console.warn('scrapeEbay: ensureImages failed', err.message);
-  } finally {
-    await browser.close();
-  }
+    const { data } = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+      }
+    });
 
-  console.log(`  ↳ Returning ${items.length} enriched listings`);
-  return items.slice(0, limit);
-}
+    const $ = cheerio.load(data);
+    const items = [];
 
-// Patch missing images by visiting listing pages (slow-path only for blanks)
-async function ensureImages(items, browser) {
-  for (const itm of items) {
-    try {
-      // Always attempt to enrich with fetchEbayImages so we capture variationImages too
-      const { mainImage, variations } = await fetchEbayImages(itm.itemHref);
+    $('.s-item__wrapper').each((i, el) => {
+      if (items.length >= limit) return false;
 
-      // --------------------------------------------------------------------
-      // NEW: cache the main image locally and rewrite imageUrl to /images/ID
-      // --------------------------------------------------------------------
-      if (mainImage && itm.itemId) {
-        const localFile = path.join(IMAGES_DIR, `${itm.itemId}.jpg`);
-        const ok = await cacheImage(localFile, mainImage);
-        if (ok) {
-          itm.imageUrl = `/images/${itm.itemId}.jpg`;
-        }
+      const $item = $(el);
+      const title = $item.find('.s-item__title').text().replace('New Listing', '').trim();
+      const priceText = $item.find('.s-item__price').text();
+      const price = parseFloat(priceText.replace(/[^0-9.]/g, ''));
+      
+      const imageUrl = $item.find('.s-item__image-img').attr('src');
+      const itemUrl = $item.find('.s-item__link').attr('href');
+      
+      // Extract date
+      const dateText = $item.find('.s-item__endedDate').text();
+      const date = dateText ? new Date(dateText.replace('Sold ', '')).toISOString() : new Date().toISOString();
+
+      // Extract shipping
+      const shippingText = $item.find('.s-item__shipping').text();
+      let shipping = 0;
+      if (shippingText && !shippingText.toLowerCase().includes('free')) {
+        const match = shippingText.match(/(\d+\.\d{2})/);
+        if (match) shipping = parseFloat(match[1]);
       }
 
-      // Fallback – still use proxy for variation images when needed
-      if (Array.isArray(variations) && variations.length) {
-        itm.variationImages = variations.map((v, idx) => {
-          if (!itm.itemId) return v;
-          const localVarFile = path.join(IMAGES_DIR, `${itm.itemId}_var${idx}.jpg`);
-          cacheImage(localVarFile, v).then();
-          return `/images/${itm.itemId}_var${idx}.jpg`;
-        });
-      }
-
-      // Additional fallback if still no image
-      if (!itm.imageUrl) {
-        const og = await fetchOgImage(browser, itm.itemHref);
-        if (og && itm.itemId) {
-          const localFile = path.join(IMAGES_DIR, `${itm.itemId}.jpg`);
-          const ok = await cacheImage(localFile, og);
-          if (ok) itm.imageUrl = `/images/${itm.itemId}.jpg`;
-        }
-      }
-
-      // ------------------------------------------------------------------
-      // FINAL safety net: if we STILL don't have a cached copy but the
-      // scraper did capture a thumbnail src on the search results page
-      // (usually something like https://i.ebayimg.com/images/g/…/s-l140.jpg),
-      // grab that small JPEG. It's not high-res but at least it shows a
-      // picture instead of the grey placeholder.
-      // ------------------------------------------------------------------
-      if (itm.imageUrl && itm.imageUrl.startsWith('http') && itm.itemId && !itm.imageUrl.startsWith('/images/')) {
-        // Don't waste time on obvious placeholders
-        if (!/placehold|trans_1x1|gray\.gif/i.test(itm.imageUrl)) {
-          const thumbFile = path.join(IMAGES_DIR, `${itm.itemId}_thumb.jpg`);
-          const ok2 = await cacheImage(thumbFile, itm.imageUrl);
-          if (ok2) itm.imageUrl = `/images/${itm.itemId}_thumb.jpg`;
-        }
-      }
-    } catch (err) {
-      console.warn('ensureImages: failed to enrich', itm.itemHref, err.message);
-    }
-  }
-  return items;
-}
-
-// Core: scrape by image upload
-async function scrapeEbayByImage(imagePath, limit = 20) {
-  const browser = await launchBrowser();
-  const page = await browser.newPage();
-  
-  try {
-    // Navigate to eBay image search
-    await page.goto('https://www.ebay.com/sch/ebayadvsearch', { waitUntil: 'networkidle2' });
-    
-    // Upload the image
-    const fileInput = await page.$('input[type="file"]');
-    if (!fileInput) {
-      console.warn('eBay image upload input not found – returning empty result');
-      return [];
-    }
-
-    await fileInput.uploadFile(imagePath);
-    
-    // Wait for search results
-    await page.waitForSelector('.s-item', { timeout: 30000 });
-    
-    // Extract listings
-    let raw = await page.$$eval(
-      '.s-item',
-      (els, lim) => els.slice(0, lim).map(el => {
-        const title = el.querySelector('.s-item__title')?.innerText;
-        const priceText = el.querySelector('.s-item__price')?.innerText || '';
-        const price = parseFloat(priceText.replace(/[^0-9\.]/g, '')) || null;
-        // eBay lazy-loads: sometimes the real URL is in data-src; fall back to src
-        const imgEl = el.querySelector('img.s-item__image-img');
-        let image = imgEl?.getAttribute('src') || imgEl?.getAttribute('data-src') || '';
-        if (image && image.startsWith('//')) image = 'https:' + image; // protocol-relative → https
-        if (image.includes('trans_1x1') || image.endsWith('.gif')) image = imgEl?.getAttribute('data-src') || '';
-        const href = el.querySelector('.s-item__link')?.href;
-        const idMatch = href?.match(/\/(\d+)(?:\?|$)/);
-        const dateText = el.querySelector('.s-item__sold-date, .s-item__endedDate')?.innerText || '';
-        const date = new Date().toISOString();
-        const dateSold = dateText.replace('Sold ', '');
-        
-        return {
-          itemId: idMatch?.[1] || null,
+      if (title && price && !title.includes('Shop on eBay')) {
+        items.push({
           title,
           price,
-          imageUrl: image,
-          itemHref: href,
-          date,
-          dateSold,
-          status: 'Sold'
-        };
-      }),
-      limit
-    );
-    
-    raw = await ensureImages(raw, browser);
-    return raw;
+          shipping,
+          totalPrice: price + shipping,
+          imageUrl,
+          itemHref: itemUrl,
+          dateSold: date,
+          date: new Date().toISOString(),
+          status: 'sold'
+        });
+      }
+    });
+
+    console.log(`Found ${items.length} items`);
+    return items;
   } catch (error) {
-    console.error('Error in image-based search:', error);
+    console.error('Scraping error:', error);
     throw error;
-  } finally {
-    await browser.close();
   }
 }
 
-// API: Text search
-app.post('/api/scrape-text', async (req, res) => {
-  const { query, limit } = req.body;
+// API Routes
+app.post('/api/text-search', async (req, res) => {
+  const { query, limit = 60 } = req.body;
   if (!query) return res.status(400).json({ error: 'Missing query' });
-  try {
-    const cacheKey = `text:${query}:${limit}`;
-    if (cache.has(cacheKey)) return res.json({ grouped: cache.get(cacheKey) });
-    const items = await scrapeEbay(query, limit || 20);
-    const grouped = groupVariations(items);
-    cache.set(cacheKey, grouped);
-    res.json({ grouped });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
-// API: Image search (stub)
-app.post('/api/scrape-image', tmpUpload.single('image'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
   try {
-    const items = await scrapeEbayByImage(req.file.path, 20);
-    const grouped = groupVariations(items);
-    res.json({ grouped });
+    const cacheKey = `search:${query}:${limit}`;
+    if (cache.has(cacheKey)) {
+      return res.json({ 
+        success: true, 
+        listings: cache.get(cacheKey),
+        cached: true
+      });
+    }
+
+    const listings = await scrapeEbay(query, limit);
+    cache.set(cacheKey, listings);
+    
+    res.json({ 
+      success: true, 
+      listings,
+      cached: false
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
-  } finally {
-    fs.unlink(req.file.path, () => {});
+    console.error('Search error:', err);
+    res.status(500).json({ 
+      success: false, 
+      message: err.message,
+      listings: []
+    });
   }
 });
 
 // Health check
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
 
-export { scrapeEbay, scrapeEbayByImage }; 
+const port = process.env.PORT || 3001;
+app.listen(port, () => console.log(`Server running on port ${port}`));
+
+export { scrapeEbay }; 
