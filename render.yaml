@@ -1,11 +1,19 @@
 services:
   - type: web
     name: SportCardAnalyzer1
-    rootDir: server
     env: docker
+    dockerCommand: ./start.sh
+    dockerContext: ./server
+    dockerfilePath: ./server/Dockerfile
     plan: starter
     region: ohio
     branch: main
+    buildCommand: |
+      cd server
+      npm install
+      npx playwright install firefox
+      npx playwright install-deps firefox
+    startCommand: ./start.sh
     envVars:
       - key: NODE_ENV
         value: production
