@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: SportCardAnalyzer1
+    env: docker
+    dockerfilePath: ../Dockerfile
+    plan: starter
+    region: ohio
+    branch: main
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DISPLAY
+        value: ":99"
+      - key: PORT
+        value: "10000"
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: FRONTEND_URL
+        value: https://sports-card-analyzer.netlify.app 

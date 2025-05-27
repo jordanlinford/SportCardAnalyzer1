@@ -1,0 +1,14 @@
+{
+  "name": "SportCardAnalyzer1",
+  "type": "web",
+  "env": "docker",
+  "dockerfilePath": "./Dockerfile",
+  "plan": "starter",
+  "region": "ohio",
+  "branch": "main",
+  "envVars": {
+    "NODE_ENV": "production",
+    "DISPLAY": ":99",
+    "PORT": "10000"
+  }
+} 
